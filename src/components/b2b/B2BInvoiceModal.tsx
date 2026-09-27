@@ -151,8 +151,8 @@ export const B2BInvoiceModal: React.FC<B2BInvoiceModalProps> = ({ order, onClose
           </div>
 
           {/* Itemized Goods Table */}
-          <div className="border border-slate-300 rounded-xl overflow-hidden mb-6">
-            <table className="w-full text-left text-xs">
+          <div className="border border-slate-300 rounded-xl overflow-x-auto mb-6">
+            <table className="w-full text-left text-xs min-w-[650px]">
               <thead className="bg-slate-100 font-bold text-slate-800 border-b border-slate-300">
                 <tr>
                   <th className="py-2.5 px-3 w-8">#</th>

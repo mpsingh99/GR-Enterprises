@@ -373,44 +373,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose,
           {activeTab === 'overview' && (
             <div className="space-y-6">
               {/* Metrics Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="p-5 rounded-2xl bg-gradient-to-br from-blue-900 to-indigo-950 text-white shadow-sm space-y-1">
-                  <div className="flex items-center justify-between text-blue-300 text-xs font-semibold">
-                    <span>Total Gross Revenue</span>
-                    <DollarSign className="w-4 h-4" />
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+                <div className="p-3.5 sm:p-5 rounded-2xl bg-gradient-to-br from-blue-900 to-indigo-950 text-white shadow-sm space-y-1">
+                  <div className="flex items-center justify-between text-blue-300 text-[11px] sm:text-xs font-semibold">
+                    <span>Gross Revenue</span>
+                    <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                   </div>
-                  <div className="text-2xl font-black">{formatCurrency(totalRevenue)}</div>
-                  <p className="text-[11px] text-blue-200">Across D2C & B2B orders</p>
+                  <div className="text-base sm:text-2xl font-black truncate">{formatCurrency(totalRevenue)}</div>
+                  <p className="text-[10px] sm:text-[11px] text-blue-200 line-clamp-1">D2C & B2B orders</p>
                 </div>
 
-                <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
-                  <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
-                    <span>Total Orders Placed</span>
-                    <FileText className="w-4 h-4 text-emerald-600" />
+                <div className="p-3.5 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
+                  <div className="flex items-center justify-between text-slate-500 text-[11px] sm:text-xs font-semibold">
+                    <span>Total Orders</span>
+                    <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
                   </div>
-                  <div className="text-2xl font-black text-slate-900">{orders.length}</div>
-                  <p className="text-[11px] text-slate-500">
-                    {d2cOrdersCount} Retail (D2C) • {b2bOrdersCount} Wholesale (B2B)
+                  <div className="text-base sm:text-2xl font-black text-slate-900">{orders.length}</div>
+                  <p className="text-[10px] sm:text-[11px] text-slate-500 line-clamp-1">
+                    {d2cOrdersCount} Retail • {b2bOrdersCount} B2B
                   </p>
                 </div>
 
-                <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
-                  <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
-                    <span>Pending B2B Applications</span>
-                    <Clock className="w-4 h-4 text-amber-500" />
+                <div className="p-3.5 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
+                  <div className="flex items-center justify-between text-slate-500 text-[11px] sm:text-xs font-semibold">
+                    <span>B2B KYC Apps</span>
+                    <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 shrink-0" />
                   </div>
-                  <div className="text-2xl font-black text-amber-600">{pendingAppsCount}</div>
-                  <p className="text-[11px] text-slate-500">Awaiting GSTIN compliance verification</p>
+                  <div className="text-base sm:text-2xl font-black text-amber-600">{pendingAppsCount}</div>
+                  <p className="text-[10px] sm:text-[11px] text-slate-500 line-clamp-1">GSTIN review</p>
                 </div>
 
-                <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
-                  <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
-                    <span>Catalog SKU Inventory</span>
-                    <Package className="w-4 h-4 text-purple-600" />
+                <div className="p-3.5 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
+                  <div className="flex items-center justify-between text-slate-500 text-[11px] sm:text-xs font-semibold">
+                    <span>SKU Inventory</span>
+                    <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-600 shrink-0" />
                   </div>
-                  <div className="text-2xl font-black text-slate-900">{products.length}</div>
-                  <p className="text-[11px] text-rose-600 font-medium">
-                    {lowStockProducts.length > 0 ? `${lowStockProducts.length} items low in stock` : 'Healthy stock levels'}
+                  <div className="text-base sm:text-2xl font-black text-slate-900">{products.length}</div>
+                  <p className="text-[10px] sm:text-[11px] text-rose-600 font-medium line-clamp-1">
+                    {lowStockProducts.length > 0 ? `${lowStockProducts.length} low stock` : 'Healthy stock'}
                   </p>
                 </div>
               </div>
@@ -627,8 +627,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose,
               </div>
 
               {/* Product Table */}
-              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
-                <table className="w-full text-left text-xs">
+              <div className="border border-slate-200 rounded-2xl overflow-x-auto shadow-xs">
+                <table className="w-full text-left text-xs min-w-[650px]">
                   <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                     <tr>
                       <th className="py-2.5 px-3">Item / SKU</th>
@@ -747,8 +747,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose,
                 <span className="text-slate-500">Showing {filteredOrders.length} orders</span>
               </div>
 
-              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
-                <table className="w-full text-left text-xs">
+              <div className="border border-slate-200 rounded-2xl overflow-x-auto shadow-xs">
+                <table className="w-full text-left text-xs min-w-[650px]">
                   <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                     <tr>
                       <th className="py-2.5 px-3">Order Ref</th>
@@ -930,8 +930,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose,
                 <span className="text-xs text-slate-500">Total Users: {users.length}</span>
               </div>
 
-              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
-                <table className="w-full text-left text-xs">
+              <div className="border border-slate-200 rounded-2xl overflow-x-auto shadow-xs">
+                <table className="w-full text-left text-xs min-w-[650px]">
                   <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                     <tr>
                       <th className="py-2.5 px-3">Customer Name</th>

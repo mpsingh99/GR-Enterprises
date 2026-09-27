@@ -151,11 +151,11 @@ export const D2CProductCard: React.FC<D2CProductCardProps> = ({ product, onOpenD
 
             <button
               onClick={handleAddToCart}
-              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs font-semibold shadow-sm transition"
+              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-2 rounded-xl text-xs font-semibold shadow-sm transition shrink-0"
               aria-label={`Add ${product.title} to cart`}
             >
               <ShoppingCart className="w-3.5 h-3.5" />
-              <span className="hidden xs:inline">Add to Cart</span>
+              <span>Add to Cart</span>
             </button>
           </div>
         )}

@@ -174,8 +174,8 @@ export const B2BQuickOrderPad: React.FC<B2BQuickOrderPadProps> = ({ isOpen, onCl
           )}
 
           {/* Matrix Table */}
-          <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
-            <table className="w-full text-left text-xs">
+          <div className="border border-slate-200 rounded-2xl overflow-x-auto shadow-xs">
+            <table className="w-full text-left text-xs min-w-[600px]">
               <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                 <tr>
                   <th className="py-3 px-3">Product / SKU</th>

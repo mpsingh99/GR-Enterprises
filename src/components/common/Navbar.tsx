@@ -85,22 +85,22 @@ export const Navbar: React.FC<NavbarProps> = ({
       )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-3 sm:gap-4">
+        <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
           
           {/* Logo & Storefront Tag: GR Enterprises (Meerut) */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg text-white shadow-md transition-colors ${
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div className="flex items-center gap-2 sm:gap-2.5 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+              <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-black text-sm sm:text-lg text-white shadow-md transition-colors shrink-0 ${
                 mode === 'B2B' ? 'bg-gradient-to-br from-blue-700 to-indigo-950' : 'bg-gradient-to-br from-emerald-600 to-teal-800'
               }`}>
                 GR
               </div>
               <div>
-                <span className="font-black text-lg tracking-tight text-slate-950 block leading-tight">
+                <span className="font-black text-sm sm:text-lg tracking-tight text-slate-950 block leading-tight">
                   GR <span className={mode === 'B2B' ? 'text-blue-700' : 'text-emerald-700'}>Enterprises</span>
                 </span>
-                <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-500">
-                  {mode === 'B2B' ? 'Wholesale & Industrial' : 'Retail Direct'} • Meerut Hub
+                <span className="block text-[8px] sm:text-[10px] uppercase font-bold tracking-wider text-slate-500 truncate max-w-[110px] sm:max-w-none">
+                  {mode === 'B2B' ? 'Wholesale' : 'Retail'} • Meerut Hub
                 </span>
               </div>
             </div>
@@ -128,7 +128,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           </div>
 
-          {/* Search Bar */}
+          {/* Search Bar - Desktop */}
           <div className="hidden lg:flex flex-1 max-w-sm items-center relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
             <input
@@ -149,16 +149,16 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Right Navigation Actions */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             
             {/* 1 All-in-One Admin Control Panel Button - Always prominent! */}
             <button
               onClick={onOpenAdmin}
-              className="inline-flex items-center gap-1.5 text-xs font-black bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-slate-950 px-3 py-1.5 rounded-xl shadow-sm border border-amber-500 transition-all hover:scale-105"
+              className="inline-flex items-center gap-1 sm:gap-1.5 text-xs font-black bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-slate-950 px-2.5 sm:px-3 py-1.5 rounded-xl shadow-xs border border-amber-500 transition-all hover:scale-105 active:scale-95 shrink-0"
               title="Open the unified GR Enterprises Admin Command Center"
             >
-              <Shield className="w-4 h-4 text-slate-950" />
-              <span>Admin Panel</span>
+              <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-950 shrink-0" />
+              <span>Admin</span>
               <span className="hidden sm:inline text-[9px] bg-slate-950 text-amber-300 px-1.5 py-0.2 rounded-full uppercase font-bold">
                 Control
               </span>
@@ -387,7 +387,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Mobile Sub-bar: Active Mode Indicator */}
-        <div className="md:hidden py-2 border-t border-slate-100 flex items-center justify-between gap-2">
+        <div className="md:hidden py-1.5 border-t border-slate-100 flex items-center justify-between gap-2">
           <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border flex-1 ${
             mode === 'D2C' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-blue-950 text-blue-100 border-blue-900'
           }`}>
@@ -405,10 +405,33 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <button
             onClick={openExperienceGate}
-            className="text-[11px] text-slate-600 hover:text-slate-900 font-semibold px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white shadow-2xs shrink-0"
+            className="text-[11px] text-slate-600 hover:text-slate-900 font-semibold px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white shadow-2xs shrink-0 active:scale-95"
           >
             Change Store
           </button>
+        </div>
+
+        {/* Mobile Search Bar - Always accessible on smartphones */}
+        <div className="md:hidden pb-2 pt-0.5">
+          <div className="relative flex items-center">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
+            <input
+              id="mobile-search-input"
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={mode === 'B2B' ? "Search SKU, bulk supplies in Meerut..." : "Search items, tech, office gear..."}
+              className="w-full bg-slate-100 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 text-slate-400 hover:text-slate-600 text-xs p-1"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Mobile Drawer when toggled */}
@@ -539,17 +562,17 @@ export const Navbar: React.FC<NavbarProps> = ({
         )}
 
         {/* Categories Bar */}
-        <div className="py-2 overflow-x-auto flex items-center gap-2 border-t border-slate-100 scrollbar-none text-xs">
-          <span className="text-slate-400 font-medium whitespace-nowrap pl-1">Category:</span>
+        <div className="py-2 overflow-x-auto flex items-center gap-1.5 sm:gap-2 border-t border-slate-100 scrollbar-none text-xs touch-pan-x">
+          <span className="text-slate-400 font-medium whitespace-nowrap pl-1 shrink-0 text-[11px] sm:text-xs">Category:</span>
           {categories.map(cat => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shrink-0 active:scale-95 ${
                 selectedCategory === cat
                   ? mode === 'B2B'
-                    ? 'bg-blue-900 text-white'
-                    : 'bg-emerald-600 text-white'
+                    ? 'bg-blue-900 text-white font-bold shadow-xs'
+                    : 'bg-emerald-600 text-white font-bold shadow-xs'
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
               }`}
             >

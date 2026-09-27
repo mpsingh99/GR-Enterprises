@@ -7,6 +7,7 @@ import { ToastContainer } from './components/common/ToastContainer';
 import { CartDrawer } from './components/common/CartDrawer';
 import { CustomerAuthModal } from './components/common/CustomerAuthModal';
 import { ExperienceGateModal } from './components/common/ExperienceGateModal';
+import { MobileBottomNav } from './components/common/MobileBottomNav';
 
 // D2C Components
 import { D2CHero } from './components/d2c/D2CHero';
@@ -93,7 +94,7 @@ const MainStorefront: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 selection:bg-blue-600 selection:text-white">
+    <div className="min-h-screen flex flex-col bg-slate-50 selection:bg-blue-600 selection:text-white pb-20 md:pb-0">
       {/* 1. Global Persona Switcher Bar for graders/testers */}
       <PersonaSwitcher />
 
@@ -204,6 +205,19 @@ const MainStorefront: React.FC = () => {
 
       {/* 5. Footer */}
       <Footer />
+
+      {/* 6. Fixed Mobile Bottom Navigation Bar */}
+      <MobileBottomNav
+        onOpenOrders={() => setIsOrderHistoryOpen(true)}
+        onOpenAdmin={() => setIsAdminDashboardOpen(true)}
+        onFocusSearch={() => {
+          const mobileInput = document.getElementById('mobile-search-input');
+          if (mobileInput) {
+            mobileInput.focus();
+            mobileInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }}
+      />
 
       {/* Global Modals & Drawers */}
       
