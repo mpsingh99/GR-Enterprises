@@ -84,8 +84,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-14 sm:h-16 gap-1.5 sm:gap-4">
           
           {/* Logo & Storefront Tag: GR Enterprises (Meerut) */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -211,10 +211,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Customer Sign In & Sign Up buttons for Visitors */}
             {!currentUser ? (
-              <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                 <button
                   onClick={() => openAuthModal('signin')}
-                  className="px-2.5 sm:px-3 py-1.5 rounded-xl text-slate-700 hover:text-slate-950 hover:bg-slate-100 text-xs font-semibold transition"
+                  className="px-2 sm:px-3 py-1.5 rounded-xl text-slate-700 hover:text-slate-950 hover:bg-slate-100 text-xs font-semibold transition shrink-0"
                 >
                   Sign In
                 </button>
@@ -226,7 +226,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       openAuthModal('signup');
                     }
                   }}
-                  className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5 ${
+                  className={`hidden sm:inline-flex px-3 sm:px-3.5 py-1.5 rounded-xl text-white text-xs font-bold transition shadow-xs items-center gap-1.5 shrink-0 ${
                     mode === 'B2B' ? 'bg-blue-900 hover:bg-blue-800' : 'bg-emerald-600 hover:bg-emerald-700'
                   }`}
                 >

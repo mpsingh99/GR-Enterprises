@@ -94,7 +94,7 @@ const MainStorefront: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 selection:bg-blue-600 selection:text-white pb-20 md:pb-0">
+    <div className="min-h-screen flex flex-col bg-slate-50 selection:bg-blue-600 selection:text-white pb-20 md:pb-0 w-full max-w-full overflow-x-hidden">
       {/* 1. Global Persona Switcher Bar for graders/testers */}
       <PersonaSwitcher />
 

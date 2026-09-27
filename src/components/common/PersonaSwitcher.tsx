@@ -61,9 +61,9 @@ export const PersonaSwitcher: React.FC = () => {
   });
 
   return (
-    <div className="bg-slate-900 text-slate-200 text-xs border-b border-slate-800 px-3 py-1.5 sm:py-2">
-      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2">
-        <div className="flex items-center justify-between gap-2">
+    <div className="bg-slate-900 text-slate-200 text-xs border-b border-slate-800 px-3 py-1.5 sm:py-2 w-full max-w-full overflow-x-hidden">
+      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2 w-full">
+        <div className="flex items-center justify-between gap-2 w-full sm:w-auto">
           <span className="inline-flex items-center gap-1 font-semibold text-amber-400 bg-amber-950/60 border border-amber-800/80 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] shrink-0">
             ⚡ Test Accounts ({mode === 'B2B' ? 'Wholesale' : 'Retail'})
           </span>
@@ -80,7 +80,7 @@ export const PersonaSwitcher: React.FC = () => {
           </button>
         </div>
 
-        <div className="flex items-center overflow-x-auto scrollbar-none gap-1 sm:gap-1.5 pb-0.5 sm:pb-0 touch-pan-x">
+        <div className="flex items-center overflow-x-auto scrollbar-none gap-1 sm:gap-1.5 pb-0.5 sm:pb-0 touch-pan-x w-full sm:w-auto">
           {filteredPersonas.map(p => {
             const isActive = currentRole === p.role;
             const Icon = p.icon;
