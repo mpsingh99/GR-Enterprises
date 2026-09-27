@@ -1,0 +1,969 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import {
+  CustomerMode,
+  User,
+  UserRole,
+  Product,
+  CartItem,
+  Order,
+  Quote,
+  B2BApplicationDetails,
+  ProductVariant,
+  B2BStatus,
+  OrderStatus,
+  QuoteStatus,
+  StoreSettings,
+  Address
+} from '../types';
+import {
+  DEFAULT_STORE_SETTINGS,
+  INITIAL_PRODUCTS,
+  INITIAL_USERS,
+  INITIAL_ORDERS,
+  INITIAL_QUOTES,
+  INITIAL_B2B_APPLICATIONS
+} from '../data/mockData';
+
+export interface ToastMessage {
+  id: string;
+  type: 'success' | 'info' | 'warning' | 'error';
+  title: string;
+  message: string;
+}
+
+interface AppContextType {
+  mode: CustomerMode;
+  setMode: (mode: CustomerMode) => void;
+  currentUser: User | null;
+  switchPersona: (roleKey: 'guest' | 'd2c_customer' | 'b2b_pending' | 'b2b_needs_info' | 'b2b_approved' | 'admin') => void;
+  
+  // Store Settings (GR Enterprises, Meerut)
+  storeSettings: StoreSettings;
+  updateStoreSettings: (settings: StoreSettings) => void;
+
+  // Data collections
+  products: Product[];
+  orders: Order[];
+  quotes: Quote[];
+  b2bApplications: B2BApplicationDetails[];
+  users: User[];
+  updateUserRole: (userId: string, newRole: UserRole) => void;
+  
+  // Cart
+  cart: CartItem[];
+  cartCount: number;
+  cartSubtotal: number;
+  addToCart: (product: Product, quantity: number, variant?: ProductVariant) => boolean;
+  updateCartQuantity: (productId: string, quantity: number, variantId?: string) => void;
+  removeFromCart: (productId: string, variantId?: string) => void;
+  clearCart: () => void;
+  
+  // Orders & Checkout
+  createOrder: (orderData: Omit<Order, 'id' | 'orderNumber' | 'invoiceNumber' | 'date' | 'status'>) => Order;
+  updateOrderStatus: (orderId: string, status: OrderStatus, trackingNumber?: string) => void;
+  
+  // B2B Applications
+  submitB2BApplication: (appData: Omit<B2BApplicationDetails, 'id' | 'appliedDate' | 'status'>) => void;
+  updateB2BApplicationByAdmin: (appId: string, status: B2BStatus, adminNotes?: string, creditLimit?: number, paymentTerms?: string) => void;
+  updateB2BApplicationByCustomer: (appId: string, updatedFields: Partial<B2BApplicationDetails>) => void;
+  
+  // Quotes (RFQ)
+  submitRFQ: (quoteData: Omit<Quote, 'id' | 'quoteNumber' | 'date' | 'status'>) => void;
+  updateQuoteStatus: (quoteId: string, status: QuoteStatus, offeredPrice?: number, adminNote?: string) => void;
+  
+  // Product management (Admin)
+  updateProduct: (product: Product) => void;
+  addProduct: (product: Omit<Product, 'id'>) => void;
+  deleteProduct: (productId: string) => void;
+  
+  // Modals & Navigation UI
+  activeModal: string | null;
+  setActiveModal: (modal: string | null) => void;
+  selectedProductId: string | null;
+  setSelectedProductId: (id: string | null) => void;
+  selectedInvoiceOrder: Order | null;
+  setSelectedInvoiceOrder: (order: Order | null) => void;
+  selectedQuoteProduct: Product | null;
+  setSelectedQuoteProduct: (product: Product | null) => void;
+  isCartDrawerOpen: boolean;
+  setIsCartDrawerOpen: (open: boolean) => void;
+  
+  // Search & Filter
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  selectedCategory: string;
+  setSelectedCategory: (cat: string) => void;
+  
+  // Toasts
+  toasts: ToastMessage[];
+  showToast: (title: string, message: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
+  dismissToast: (id: string) => void;
+  
+  // Guest Orders
+  guestOrderIds: string[];
+  
+  // Website Customer Authentication & Retail Onboarding
+  isAuthModalOpen: boolean;
+  setIsAuthModalOpen: (open: boolean) => void;
+  authModalTab: 'signup' | 'signin';
+  setAuthModalTab: (tab: 'signup' | 'signin') => void;
+  openAuthModal: (tab?: 'signup' | 'signin') => void;
+  registerGoogleRetailUser: (profile: {
+    name: string;
+    email: string;
+    avatar?: string;
+    phone: string;
+    address: Address;
+  }) => User;
+  registerRetailUser: (profile: {
+    name: string;
+    email: string;
+    phone: string;
+    address: Address;
+    password?: string;
+  }) => User;
+  isGoogleAuthModalOpen: boolean;
+  setIsGoogleAuthModalOpen: (open: boolean) => void;
+
+  // Experience Gateway (Initial Visit Chooser)
+  isExperienceGateOpen: boolean;
+  setIsExperienceGateOpen: (open: boolean) => void;
+  openExperienceGate: () => void;
+  selectExperience: (chosenMode: CustomerMode) => void;
+
+  // Utilities
+  resetAllData: () => void;
+  getB2BUnitPrice: (product: Product, quantity: number) => number;
+}
+
+const AppContext = createContext<AppContextType | undefined>(undefined);
+
+const LOCAL_STORAGE_KEYS = {
+  MODE: 'gre_mode_v2',
+  USER_ROLE: 'gre_user_role_v2',
+  PRODUCTS: 'gre_products_v2',
+  ORDERS: 'gre_orders_v2',
+  QUOTES: 'gre_quotes_v2',
+  APPLICATIONS: 'gre_b2b_apps_v2',
+  USERS: 'gre_users_v2',
+  CART: 'gre_cart_v2',
+  SETTINGS: 'gre_settings_v2',
+  GUEST_ORDERS: 'gre_guest_orders_v2'
+};
+
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Store Settings (GR Enterprises, Meerut)
+  const [storeSettings, setStoreSettings] = useState<StoreSettings>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.SETTINGS);
+    return saved ? JSON.parse(saved) : DEFAULT_STORE_SETTINGS;
+  });
+
+  // Guest order IDs
+  const [guestOrderIds, setGuestOrderIds] = useState<string[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.GUEST_ORDERS);
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Mode: D2C or B2B
+  const [mode, setModeState] = useState<CustomerMode>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.MODE);
+    return (saved === 'B2B' || saved === 'D2C') ? saved : 'D2C';
+  });
+
+  // Users Directory
+  const [users, setUsers] = useState<User[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.USERS);
+    return saved ? JSON.parse(saved) : INITIAL_USERS;
+  });
+
+  // Current User (Defaults to null/guest for visitors until they sign up)
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const savedRole = localStorage.getItem(LOCAL_STORAGE_KEYS.USER_ROLE);
+    if (!savedRole || savedRole === 'guest') return null;
+    return INITIAL_USERS.find(u => u.role === savedRole) || null;
+  });
+
+  // Experience Gateway (Prompts visitor on opening site: Retail or B2B)
+  const [isExperienceGateOpen, setIsExperienceGateOpen] = useState<boolean>(() => {
+    return !sessionStorage.getItem('gre_experience_chosen');
+  });
+
+  const openExperienceGate = () => {
+    setIsExperienceGateOpen(true);
+  };
+
+  const selectExperience = (chosenMode: CustomerMode) => {
+    setModeState(chosenMode);
+    localStorage.setItem(LOCAL_STORAGE_KEYS.MODE, chosenMode);
+    sessionStorage.setItem('gre_experience_chosen', chosenMode);
+    setIsExperienceGateOpen(false);
+  };
+
+  // Products
+  const [products, setProducts] = useState<Product[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.PRODUCTS);
+    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+  });
+
+  // Orders
+  const [orders, setOrders] = useState<Order[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.ORDERS);
+    return saved ? JSON.parse(saved) : INITIAL_ORDERS;
+  });
+
+  // Quotes
+  const [quotes, setQuotes] = useState<Quote[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.QUOTES);
+    return saved ? JSON.parse(saved) : INITIAL_QUOTES;
+  });
+
+  // B2B Applications
+  const [b2bApplications, setB2bApplications] = useState<B2BApplicationDetails[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.APPLICATIONS);
+    return saved ? JSON.parse(saved) : INITIAL_B2B_APPLICATIONS;
+  });
+
+  // Cart
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.CART);
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // UI state
+  const [activeModal, setActiveModal] = useState<string | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<Order | null>(null);
+  const [selectedQuoteProduct, setSelectedQuoteProduct] = useState<Product | null>(null);
+  const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalTab, setAuthModalTab] = useState<'signup' | 'signin'>('signup');
+  const isGoogleAuthModalOpen = isAuthModalOpen;
+  const setIsGoogleAuthModalOpen = (open: boolean) => setIsAuthModalOpen(open);
+
+  const openAuthModal = (tab: 'signup' | 'signin' = 'signup') => {
+    setAuthModalTab(tab);
+    setIsAuthModalOpen(true);
+  };
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  // Local storage persistence
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEYS.SETTINGS, JSON.stringify(storeSettings));
+  }, [storeSettings]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEYS.MODE, mode);
+  }, [mode]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
+  }, [products]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEYS.ORDERS, JSON.stringify(orders));
+  }, [orders]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEYS.QUOTES, JSON.stringify(quotes));
+  }, [quotes]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEYS.APPLICATIONS, JSON.stringify(b2bApplications));
+  }, [b2bApplications]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEYS.USERS, JSON.stringify(users));
+  }, [users]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEYS.CART, JSON.stringify(cart));
+  }, [cart]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEYS.GUEST_ORDERS, JSON.stringify(guestOrderIds));
+  }, [guestOrderIds]);
+
+  // Keep currentUser synced if applications change
+  useEffect(() => {
+    if (currentUser?.businessProfile) {
+      const updatedApp = b2bApplications.find(a => a.id === currentUser.businessProfile?.id);
+      if (updatedApp && updatedApp.status !== currentUser.businessProfile.status) {
+        setCurrentUser(prev => {
+          if (!prev) return null;
+          const newRole = updatedApp.status === 'approved' 
+            ? 'b2b_approved' 
+            : updatedApp.status === 'needs_more_info' 
+              ? 'b2b_needs_info' 
+              : 'b2b_pending';
+          return {
+            ...prev,
+            role: newRole,
+            businessProfile: updatedApp
+          };
+        });
+      }
+    }
+  }, [b2bApplications, currentUser]);
+
+  const showToast = (title: string, message: string, type: 'success' | 'info' | 'warning' | 'error' = 'info') => {
+    const id = Date.now().toString() + Math.random().toString(36).substring(2, 6);
+    setToasts(prev => [...prev, { id, title, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4500);
+  };
+
+  const dismissToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  const setMode = (newMode: CustomerMode) => {
+    setModeState(newMode);
+    if (newMode === 'B2B') {
+      showToast(
+        'GR Enterprises • B2B Wholesale Mode',
+        'Viewing enterprise products, wholesale pricing tiers, and case pack requirements.',
+        'info'
+      );
+    } else {
+      showToast(
+        'GR Enterprises • D2C Retail Mode',
+        'Viewing consumer retail storefront with direct checkout from Meerut hub.',
+        'info'
+      );
+    }
+  };
+
+  const switchPersona = (roleKey: 'guest' | 'd2c_customer' | 'b2b_pending' | 'b2b_needs_info' | 'b2b_approved' | 'admin') => {
+    localStorage.setItem(LOCAL_STORAGE_KEYS.USER_ROLE, roleKey);
+    if (roleKey === 'guest') {
+      setCurrentUser(null);
+      showToast('Switched Persona', 'Now browsing as Unregistered Guest', 'info');
+      return;
+    }
+
+    const matched = users.find(u => u.role === roleKey) || INITIAL_USERS.find(u => u.role === roleKey);
+    if (matched) {
+      let updatedUser = { ...matched };
+      if (matched.businessProfile) {
+        const freshApp = b2bApplications.find(a => a.id === matched.businessProfile?.id) || matched.businessProfile;
+        updatedUser.businessProfile = freshApp;
+      }
+      setCurrentUser(updatedUser);
+
+      if (roleKey.startsWith('b2b')) {
+        setModeState('B2B');
+      } else if (roleKey === 'd2c_customer') {
+        setModeState('D2C');
+      }
+
+      showToast(
+        'Persona Switched',
+        `Logged in as ${matched.name} (${roleKey.toUpperCase()})`,
+        'success'
+      );
+    }
+  };
+
+  const updateStoreSettings = (newSettings: StoreSettings) => {
+    setStoreSettings(newSettings);
+    showToast('Store Settings Saved', 'Updated GR Enterprises company information and GST parameters.', 'success');
+  };
+
+  const updateUserRole = (userId: string, newRole: UserRole) => {
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+    if (currentUser?.id === userId) {
+      setCurrentUser(prev => prev ? { ...prev, role: newRole } : null);
+    }
+    showToast('User Role Updated', `User permissions updated to ${newRole.toUpperCase()}`, 'success');
+  };
+
+  const registerGoogleRetailUser = (profile: {
+    name: string;
+    email: string;
+    avatar?: string;
+    phone: string;
+    address: Address;
+  }): User => {
+    const cleanEmail = profile.email.trim().toLowerCase();
+    const existingIndex = users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+
+    let resolvedUser: User;
+
+    if (existingIndex > -1) {
+      const existing = users[existingIndex];
+      const addresses = existing.savedAddresses ? [...existing.savedAddresses] : [];
+      const hasAddr = addresses.some(
+        a => a.street.toLowerCase() === profile.address.street.toLowerCase() &&
+             a.postalCode === profile.address.postalCode
+      );
+      if (!hasAddr) {
+        addresses.unshift(profile.address);
+      }
+
+      resolvedUser = {
+        ...existing,
+        name: profile.name || existing.name,
+        phone: profile.phone || existing.phone,
+        avatar: profile.avatar || existing.avatar,
+        authProvider: 'google',
+        role: 'd2c_customer',
+        savedAddresses: addresses
+      };
+
+      setUsers(prev => {
+        const next = [...prev];
+        next[existingIndex] = resolvedUser;
+        return next;
+      });
+    } else {
+      resolvedUser = {
+        id: `user-google-${Date.now().toString().slice(-6)}`,
+        name: profile.name,
+        email: cleanEmail,
+        phone: profile.phone,
+        role: 'd2c_customer',
+        avatar: profile.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(profile.name)}`,
+        authProvider: 'google',
+        joinedDate: new Date().toISOString().split('T')[0],
+        savedAddresses: [profile.address]
+      };
+
+      setUsers(prev => [resolvedUser, ...prev]);
+    }
+
+    setCurrentUser(resolvedUser);
+    setModeState('D2C');
+
+    // Link any session guest orders to this newly authenticated Google account
+    if (guestOrderIds.length > 0) {
+      setOrders(prev => prev.map(o => {
+        if (guestOrderIds.includes(o.id)) {
+          return {
+            ...o,
+            customerId: resolvedUser.id,
+            customerName: resolvedUser.name,
+            customerEmail: resolvedUser.email,
+            customerPhone: resolvedUser.phone || o.customerPhone,
+            isGuest: false
+          };
+        }
+        return o;
+      }));
+    }
+
+    showToast(
+      'Google Retail Sign-Up Verified',
+      `Welcome to GR Enterprises, ${profile.name}! Your retail customer account, phone, and delivery address are verified.`,
+      'success'
+    );
+
+    return resolvedUser;
+  };
+
+  const registerRetailUser = (profile: {
+    name: string;
+    email: string;
+    phone: string;
+    address: Address;
+    password?: string;
+  }): User => {
+    const cleanEmail = profile.email.trim().toLowerCase();
+    const existingIndex = users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+
+    let resolvedUser: User;
+
+    if (existingIndex > -1) {
+      const existing = users[existingIndex];
+      const addresses = existing.savedAddresses ? [...existing.savedAddresses] : [];
+      const hasAddr = addresses.some(
+        a => a.street.toLowerCase() === profile.address.street.toLowerCase() &&
+             a.postalCode === profile.address.postalCode
+      );
+      if (!hasAddr) {
+        addresses.unshift(profile.address);
+      }
+
+      resolvedUser = {
+        ...existing,
+        name: profile.name || existing.name,
+        phone: profile.phone || existing.phone,
+        role: 'd2c_customer',
+        savedAddresses: addresses
+      };
+
+      setUsers(prev => {
+        const next = [...prev];
+        next[existingIndex] = resolvedUser;
+        return next;
+      });
+    } else {
+      resolvedUser = {
+        id: `user-retail-${Date.now().toString().slice(-6)}`,
+        name: profile.name,
+        email: cleanEmail,
+        phone: profile.phone,
+        role: 'd2c_customer',
+        avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(profile.name)}`,
+        authProvider: 'email',
+        joinedDate: new Date().toISOString().split('T')[0],
+        savedAddresses: [profile.address]
+      };
+
+      setUsers(prev => [resolvedUser, ...prev]);
+    }
+
+    setCurrentUser(resolvedUser);
+    setModeState('D2C');
+
+    if (guestOrderIds.length > 0) {
+      setOrders(prev => prev.map(o => {
+        if (guestOrderIds.includes(o.id)) {
+          return {
+            ...o,
+            customerId: resolvedUser.id,
+            customerName: resolvedUser.name,
+            customerEmail: resolvedUser.email,
+            customerPhone: resolvedUser.phone || o.customerPhone,
+            isGuest: false
+          };
+        }
+        return o;
+      }));
+    }
+
+    showToast(
+      'Account Created Successfully',
+      `Welcome to GR Enterprises, ${profile.name}! Your retail customer account, mobile phone, and delivery address are saved.`,
+      'success'
+    );
+
+    return resolvedUser;
+  };
+
+  // Pricing helper for B2B tiers
+  const getB2BUnitPrice = (product: Product, quantity: number): number => {
+    if (!product.priceTiers || product.priceTiers.length === 0) {
+      return product.wholesalePrice;
+    }
+    const sortedTiers = [...product.priceTiers].sort((a, b) => b.minQuantity - a.minQuantity);
+    const matchedTier = sortedTiers.find(tier => quantity >= tier.minQuantity);
+    return matchedTier ? matchedTier.pricePerUnit : product.wholesalePrice;
+  };
+
+  const addToCart = (product: Product, quantity: number, variant?: ProductVariant): boolean => {
+    if (mode === 'B2B') {
+      const isApproved = currentUser?.role === 'b2b_approved';
+      if (!isApproved) {
+        showToast(
+          'Verification Required for Wholesale Ordering',
+          'Wholesale cart and checkout are reserved for approved business accounts. Please submit an application or switch persona to test.',
+          'warning'
+        );
+        setActiveModal('b2b_register');
+        return false;
+      }
+
+      if (quantity < product.moq) {
+        showToast(
+          'Minimum Order Quantity Not Met',
+          `The minimum order quantity for ${product.title} is ${product.moq} ${product.unit}s.`,
+          'warning'
+        );
+        return false;
+      }
+
+      if (product.casePackSize > 1 && quantity % product.casePackSize !== 0) {
+        showToast(
+          'Case Pack Requirement',
+          `${product.title} is packaged in case packs of ${product.casePackSize} units. Please adjust quantity to a multiple of ${product.casePackSize}.`,
+          'warning'
+        );
+        return false;
+      }
+    }
+
+    const unitPrice = mode === 'B2B' 
+      ? getB2BUnitPrice(product, quantity) + (variant?.additionalPrice || 0)
+      : product.retailPrice + (variant?.additionalPrice || 0);
+
+    setCart(prev => {
+      const existingIndex = prev.findIndex(item => 
+        item.productId === product.id && 
+        item.mode === mode && 
+        item.selectedVariant?.id === variant?.id
+      );
+
+      if (existingIndex > -1) {
+        const updated = [...prev];
+        const newQty = updated[existingIndex].quantity + quantity;
+        const newUnitPrice = mode === 'B2B' 
+          ? getB2BUnitPrice(product, newQty) + (variant?.additionalPrice || 0)
+          : product.retailPrice + (variant?.additionalPrice || 0);
+
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          quantity: newQty,
+          unitPrice: newUnitPrice
+        };
+        return updated;
+      } else {
+        return [...prev, {
+          productId: product.id,
+          product,
+          quantity,
+          mode,
+          selectedVariant: variant,
+          unitPrice
+        }];
+      }
+    });
+
+    showToast(
+      'Added to Cart',
+      `Added ${quantity} ${product.unit}(s) of "${product.title}" to your ${mode} cart.`,
+      'success'
+    );
+    setIsCartDrawerOpen(true);
+    return true;
+  };
+
+  const updateCartQuantity = (productId: string, quantity: number, variantId?: string) => {
+    if (quantity <= 0) {
+      removeFromCart(productId, variantId);
+      return;
+    }
+
+    setCart(prev => prev.map(item => {
+      if (item.productId === productId && item.selectedVariant?.id === variantId) {
+        const newUnitPrice = item.mode === 'B2B'
+          ? getB2BUnitPrice(item.product, quantity) + (item.selectedVariant?.additionalPrice || 0)
+          : item.product.retailPrice + (item.selectedVariant?.additionalPrice || 0);
+        return {
+          ...item,
+          quantity,
+          unitPrice: newUnitPrice
+        };
+      }
+      return item;
+    }));
+  };
+
+  const removeFromCart = (productId: string, variantId?: string) => {
+    setCart(prev => prev.filter(item => !(item.productId === productId && item.selectedVariant?.id === variantId)));
+    showToast('Removed from Cart', 'Item removed from your cart.', 'info');
+  };
+
+  const clearCart = () => {
+    setCart([]);
+  };
+
+  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const cartSubtotal = cart.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
+
+  // Orders
+  const createOrder = (orderData: Omit<Order, 'id' | 'orderNumber' | 'invoiceNumber' | 'date' | 'status'>): Order => {
+    const timestamp = Date.now().toString().slice(-4);
+    const randomDigit = Math.floor(1000 + Math.random() * 9000);
+    const orderNumber = orderData.mode === 'B2B' 
+      ? `GRE-B2B-2026-${randomDigit}`
+      : `GRE-D2C-2026-${randomDigit}`;
+    const invoiceNumber = orderData.mode === 'B2B'
+      ? `INV-2026-GRE-B2B-${randomDigit}`
+      : `INV-2026-GRE-RET-${randomDigit}`;
+
+    const newOrder: Order = {
+      ...orderData,
+      id: `ord-${timestamp}`,
+      orderNumber,
+      invoiceNumber,
+      date: new Date().toISOString().split('T')[0],
+      status: 'Confirmed'
+    };
+
+    setOrders(prev => [newOrder, ...prev]);
+
+    if (!currentUser || orderData.isGuest) {
+      setGuestOrderIds(prev => [newOrder.id, ...prev]);
+    }
+
+    // Deduct stock from products
+    setProducts(prev => prev.map(p => {
+      const orderItem = newOrder.items.find(item => item.productId === p.id);
+      if (orderItem) {
+        return {
+          ...p,
+          stock: Math.max(0, p.stock - orderItem.quantity)
+        };
+      }
+      return p;
+    }));
+
+    clearCart();
+    return newOrder;
+  };
+
+  const updateOrderStatus = (orderId: string, status: OrderStatus, trackingNumber?: string) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? { 
+      ...o, 
+      status, 
+      trackingNumber: trackingNumber !== undefined ? trackingNumber : o.trackingNumber 
+    } : o));
+    showToast('Order Status Updated', `Order ${orderId} marked as ${status}`, 'success');
+  };
+
+  // B2B Applications
+  const submitB2BApplication = (appData: Omit<B2BApplicationDetails, 'id' | 'appliedDate' | 'status'>) => {
+    const newApp: B2BApplicationDetails = {
+      ...appData,
+      id: `app-${Date.now()}`,
+      status: 'pending',
+      appliedDate: new Date().toISOString().split('T')[0]
+    };
+
+    setB2bApplications(prev => [newApp, ...prev]);
+
+    if (currentUser) {
+      const updatedUser: User = {
+        ...currentUser,
+        role: 'b2b_pending',
+        businessProfile: newApp
+      };
+      setCurrentUser(updatedUser);
+      setUsers(prev => prev.map(u => u.id === currentUser.id ? updatedUser : u));
+    }
+
+    showToast(
+      'Application Submitted to GR Enterprises',
+      'Your B2B account application is now Pending verification by our Meerut compliance desk.',
+      'success'
+    );
+  };
+
+  const updateB2BApplicationByAdmin = (
+    appId: string,
+    status: B2BStatus,
+    adminNotes?: string,
+    creditLimit?: number,
+    paymentTerms?: string
+  ) => {
+    setB2bApplications(prev => prev.map(app => {
+      if (app.id === appId) {
+        return {
+          ...app,
+          status,
+          adminNotes: adminNotes ?? app.adminNotes,
+          creditLimit: creditLimit !== undefined ? creditLimit : app.creditLimit,
+          paymentTerms: paymentTerms ?? app.paymentTerms,
+          reviewedDate: new Date().toISOString().split('T')[0],
+          reviewedBy: 'Admin (GR Enterprises Meerut)'
+        };
+      }
+      return app;
+    }));
+
+    // Also update associated user role if approved
+    setUsers(prev => prev.map(u => {
+      if (u.businessProfile?.id === appId) {
+        const newRole = status === 'approved' 
+          ? 'b2b_approved' 
+          : status === 'needs_more_info' 
+            ? 'b2b_needs_info' 
+            : 'b2b_pending';
+        return { ...u, role: newRole };
+      }
+      return u;
+    }));
+
+    showToast(
+      'B2B Application Updated',
+      `Application ${appId} changed to "${status.toUpperCase()}".`,
+      status === 'approved' ? 'success' : status === 'rejected' ? 'error' : 'warning'
+    );
+  };
+
+  const updateB2BApplicationByCustomer = (appId: string, updatedFields: Partial<B2BApplicationDetails>) => {
+    setB2bApplications(prev => prev.map(app => {
+      if (app.id === appId) {
+        return {
+          ...app,
+          ...updatedFields,
+          status: 'pending',
+          appliedDate: new Date().toISOString().split('T')[0]
+        };
+      }
+      return app;
+    }));
+
+    showToast(
+      'Application Re-submitted to GR Enterprises',
+      'Your updated business details have been sent to our Meerut verification desk.',
+      'success'
+    );
+  };
+
+  // Quotes
+  const submitRFQ = (quoteData: Omit<Quote, 'id' | 'quoteNumber' | 'date' | 'status'>) => {
+    const quoteNumber = `RFQ-GRE-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newQuote: Quote = {
+      ...quoteData,
+      id: `q-${Date.now()}`,
+      quoteNumber,
+      date: new Date().toISOString().split('T')[0],
+      status: 'Submitted'
+    };
+
+    setQuotes(prev => [newQuote, ...prev]);
+    showToast(
+      'RFQ Submitted Successfully',
+      `Quote request ${quoteNumber} submitted to GR Enterprises sales desk.`,
+      'success'
+    );
+  };
+
+  const updateQuoteStatus = (quoteId: string, status: QuoteStatus, offeredPrice?: number, adminNote?: string) => {
+    setQuotes(prev => prev.map(q => {
+      if (q.id === quoteId) {
+        return {
+          ...q,
+          status,
+          offeredPricePerUnit: offeredPrice !== undefined ? offeredPrice : q.offeredPricePerUnit,
+          adminResponseNote: adminNote !== undefined ? adminNote : q.adminResponseNote
+        };
+      }
+      return q;
+    }));
+
+    showToast('Quote Updated', `Quote ${quoteId} updated to ${status}.`, 'info');
+  };
+
+  // Products
+  const updateProduct = (updated: Product) => {
+    setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
+    showToast('Product Updated', `Saved changes for ${updated.title}`, 'success');
+  };
+
+  const addProduct = (newProd: Omit<Product, 'id'>) => {
+    const prod: Product = {
+      ...newProd,
+      id: `prod-${Date.now()}`
+    };
+    setProducts(prev => [prod, ...prev]);
+    showToast('Product Created', `Added ${prod.title} to GR Enterprises catalog.`, 'success');
+  };
+
+  const deleteProduct = (productId: string) => {
+    setProducts(prev => prev.filter(p => p.id !== productId));
+    showToast('Product Removed', 'Product has been deleted from catalog.', 'info');
+  };
+
+  const resetAllData = () => {
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.MODE);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.USER_ROLE);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.PRODUCTS);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.ORDERS);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.QUOTES);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.APPLICATIONS);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.USERS);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.CART);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.SETTINGS);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.GUEST_ORDERS);
+
+    sessionStorage.removeItem('gre_experience_chosen');
+
+    setModeState('D2C');
+    setStoreSettings(DEFAULT_STORE_SETTINGS);
+    setCurrentUser(null);
+    setIsExperienceGateOpen(true);
+    setUsers(INITIAL_USERS);
+    setProducts(INITIAL_PRODUCTS);
+    setOrders(INITIAL_ORDERS);
+    setQuotes(INITIAL_QUOTES);
+    setB2bApplications(INITIAL_B2B_APPLICATIONS);
+    setCart([]);
+    setGuestOrderIds([]);
+    showToast('Reset Complete', 'GR Enterprises Meerut database reset to fresh visitor state.', 'info');
+  };
+
+  return (
+    <AppContext.Provider
+      value={{
+        mode,
+        setMode,
+        currentUser,
+        switchPersona,
+        storeSettings,
+        updateStoreSettings,
+        products,
+        orders,
+        quotes,
+        b2bApplications,
+        users,
+        updateUserRole,
+        cart,
+        cartCount,
+        cartSubtotal,
+        addToCart,
+        updateCartQuantity,
+        removeFromCart,
+        clearCart,
+        createOrder,
+        updateOrderStatus,
+        submitB2BApplication,
+        updateB2BApplicationByAdmin,
+        updateB2BApplicationByCustomer,
+        submitRFQ,
+        updateQuoteStatus,
+        updateProduct,
+        addProduct,
+        deleteProduct,
+        activeModal,
+        setActiveModal,
+        selectedProductId,
+        setSelectedProductId,
+        selectedInvoiceOrder,
+        setSelectedInvoiceOrder,
+        selectedQuoteProduct,
+        setSelectedQuoteProduct,
+        isCartDrawerOpen,
+        setIsCartDrawerOpen,
+        searchQuery,
+        setSearchQuery,
+        selectedCategory,
+        setSelectedCategory,
+        toasts,
+        showToast,
+        dismissToast,
+        resetAllData,
+        getB2BUnitPrice,
+        guestOrderIds,
+        isAuthModalOpen,
+        setIsAuthModalOpen,
+        authModalTab,
+        setAuthModalTab,
+        openAuthModal,
+        registerGoogleRetailUser,
+        registerRetailUser,
+        isGoogleAuthModalOpen,
+        setIsGoogleAuthModalOpen,
+        isExperienceGateOpen,
+        setIsExperienceGateOpen,
+        openExperienceGate,
+        selectExperience
+      }}
+    >
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (!context) {
+    throw new Error('useApp must be used within an AppProvider');
+  }
+  return context;
+};
