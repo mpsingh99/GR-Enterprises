@@ -23,6 +23,22 @@ import {
   INITIAL_QUOTES,
   INITIAL_B2B_APPLICATIONS
 } from '../data/mockData';
+import {
+  checkHealth,
+  apiGetProducts,
+  apiGetOrders,
+  apiGetSettings,
+  apiCreateOrder,
+  apiRegisterRetail,
+  apiGoogleSync,
+  apiRegisterB2B,
+  apiCreateQuote,
+  apiUpdateSettings,
+  apiCreateProduct,
+  apiUpdateProduct,
+  apiDeleteProduct,
+  apiUpdateOrderStatus
+} from '../services/api';
 
 export interface ToastMessage {
   id: string;
@@ -37,6 +53,9 @@ interface AppContextType {
   currentUser: User | null;
   switchPersona: (roleKey: 'guest' | 'd2c_customer' | 'b2b_pending' | 'b2b_needs_info' | 'b2b_approved' | 'admin') => void;
   
+  // Database Connection Status (MongoDB Atlas / Local)
+  dbStatus: { connected: boolean; host?: string; name?: string };
+
   // Store Settings (GR Enterprises, Meerut)
   storeSettings: StoreSettings;
   updateStoreSettings: (settings: StoreSettings) => void;
@@ -285,6 +304,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEYS.GUEST_ORDERS, JSON.stringify(guestOrderIds));
   }, [guestOrderIds]);
+
+  // Database Connection Status
+  const [dbStatus, setDbStatus] = useState<{ connected: boolean; host?: string; name?: string }>({
+    connected: false,
+    host: 'Local Cache',
+    name: 'Offline / Standalone'
+  });
+
+  // Attempt background sync with live MongoDB when backend server is running
+  useEffect(() => {
+    checkHealth()
+      .then(health => {
+        if (health) {
+          setDbStatus({
+            connected: health.database.connected,
+            host: health.database.host,
+            name: health.database.name
+          });
+          if (health.database.connected) {
+            apiGetProducts().then(prods => {
+              if (prods && prods.length > 0) setProducts(prods);
+            });
+            apiGetSettings().then(sett => {
+              if (sett) setStoreSettings(sett);
+            });
+            apiGetOrders().then(ords => {
+              if (ords && ords.length > 0) setOrders(ords);
+            });
+          }
+        }
+      })
+      .catch(() => {
+        // Backend server offline, continues running smoothly from local state
+      });
+  }, []);
 
   // Keep currentUser synced if applications change
   useEffect(() => {
@@ -952,7 +1006,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isExperienceGateOpen,
         setIsExperienceGateOpen,
         openExperienceGate,
-        selectExperience
+        selectExperience,
+        dbStatus
       }}
     >
       {children}

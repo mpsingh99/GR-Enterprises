@@ -1,0 +1,642 @@
+import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+import { ProductModel } from '../models/Product.js';
+import { UserModel } from '../models/User.js';
+import { OrderModel } from '../models/Order.js';
+import { QuoteModel } from '../models/Quote.js';
+import { StoreSettingsModel } from '../models/StoreSettings.js';
+
+dotenv.config();
+
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/gr_enterprises';
+
+const INITIAL_STORE_SETTINGS = {
+  companyName: 'GR Enterprises',
+  legalEntityName: 'GR Enterprises Private Limited',
+  tagline: 'Leading D2C Retail & B2B Wholesale Supply Center • Meerut Hub',
+  gstin: '09AABCG1234F1Z8',
+  panNumber: 'AABCG1234F',
+  cin: 'U72200UP2026PTC109922',
+  street: 'GR Tower, Delhi Road, Near Transport Nagar',
+  city: 'Meerut',
+  state: 'Uttar Pradesh',
+  stateCode: '09',
+  postalCode: '250002',
+  country: 'India',
+  email: 'contact@grenterprises.in',
+  phone: '+91 121 255 4321 / +91 98370 12345',
+  freeShippingThreshold: 1000,
+  defaultGstPercent: 18,
+};
+
+const INITIAL_PRODUCTS = [
+  {
+    id: 'prod-1',
+    sku: 'GRE-MON-4K34',
+    hsnCode: '85285200',
+    title: 'GR ProView 34" UltraWide Curved 4K HDR Monitor',
+    description: 'Ultrawide 21:9 WQHD (3440 x 1440) IPS display with 144Hz refresh rate, USB-C 90W Power Delivery, and built-in KVM switch for multi-device workstations.',
+    category: 'Electronics',
+    image: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=800&q=80',
+    images: [
+      'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1547119957-637f8679db1e?auto=format&fit=crop&w=800&q=80',
+    ],
+    retailPrice: 38990,
+    mrp: 49990,
+    wholesalePrice: 29500,
+    priceTiers: [
+      { minQuantity: 5, maxQuantity: 19, pricePerUnit: 28200, savingsPercentage: 27 },
+      { minQuantity: 20, maxQuantity: 49, pricePerUnit: 26500, savingsPercentage: 32 },
+      { minQuantity: 50, pricePerUnit: 24800, savingsPercentage: 36 },
+    ],
+    moq: 5,
+    casePackSize: 2,
+    stock: 140,
+    unit: 'unit',
+    rating: 4.8,
+    reviewsCount: 124,
+    isRfqEligible: true,
+    taxRatePercent: 18,
+    features: [
+      '34" UltraWide WQHD (3440 x 1440) 1900R Curved Display',
+      '90W USB-C Single-Cable Docking with Ethernet & USB Hub',
+      'Hardware KVM Switch for dual-machine productivity',
+      'Factory Calibrated 98% DCI-P3 Color Accuracy',
+      '3-Year Enterprise On-Site Replacement Warranty',
+    ],
+    specifications: {
+      'Panel Type': 'Nano IPS',
+      'Resolution': '3440 x 1440 (21:9)',
+      'Refresh Rate': '144Hz',
+      'Ports': '2x HDMI 2.1, 1x DP 1.4, 1x USB-C 90W, 4x USB-A 3.2',
+      'Color Gamut': '98% DCI-P3, 100% sRGB',
+    },
+    variants: [
+      { id: 'v-mon-blk', name: 'Matte Space Grey Stand', sku: 'GRE-MON-4K34-BLK', additionalPrice: 0, stock: 95 },
+      { id: 'v-mon-slv', name: 'Platinum Silver Stand', sku: 'GRE-MON-4K34-SLV', additionalPrice: 1200, stock: 45 },
+    ],
+  },
+  {
+    id: 'prod-2',
+    sku: 'GRE-DSK-DUAL160',
+    hsnCode: '94031090',
+    title: 'GR ErgoRise Dual-Motor Electric Height-Adjustable Standing Desk (160x80cm)',
+    description: 'Heavy-duty steel dual-motor frame with collision avoidance, digital 4-memory keypad, and commercial solid oak scratch-resistant top.',
+    category: 'Office & Workspaces',
+    image: 'https://images.unsplash.com/photo-1595515106969-1ce29566ff1c?auto=format&fit=crop&w=800&q=80',
+    images: [
+      'https://images.unsplash.com/photo-1595515106969-1ce29566ff1c?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?auto=format&fit=crop&w=800&q=80',
+    ],
+    retailPrice: 24490,
+    mrp: 32990,
+    wholesalePrice: 18200,
+    priceTiers: [
+      { minQuantity: 10, maxQuantity: 24, pricePerUnit: 17400, savingsPercentage: 29 },
+      { minQuantity: 25, maxQuantity: 49, pricePerUnit: 16100, savingsPercentage: 34 },
+      { minQuantity: 50, pricePerUnit: 14900, savingsPercentage: 39 },
+    ],
+    moq: 10,
+    casePackSize: 5,
+    stock: 220,
+    unit: 'desk',
+    rating: 4.9,
+    reviewsCount: 88,
+    isRfqEligible: true,
+    taxRatePercent: 18,
+    features: [
+      'Dual-Motor lifting system supports up to 135 kg dynamic load',
+      'Smooth speed of 38 mm/s with anti-collision gyroscope sensors',
+      'Height range from 62cm to 128cm suitable for all postures',
+      'Commercial FSC-certified 25mm thick beveled table-top',
+      '5-Year Industrial Warranty on Motors & Electronics',
+    ],
+    specifications: {
+      'Desktop Dimensions': '160cm x 80cm x 2.5cm',
+      'Lifting Range': '620mm - 1280mm',
+      'Max Load Capacity': '135 kg',
+      'Keypad': 'LED Touch with 4 Memory Presets + USB Charger',
+    },
+    variants: [
+      { id: 'v-dsk-oak', name: 'Rustic Natural Oak Top', sku: 'GRE-DSK-DUAL160-OAK', additionalPrice: 0, stock: 120 },
+      { id: 'v-dsk-wal', name: 'Dark Walnut Finish', sku: 'GRE-DSK-DUAL160-WAL', additionalPrice: 800, stock: 100 },
+    ],
+  },
+  {
+    id: 'prod-3',
+    sku: 'GRE-CHR-ERGO9',
+    hsnCode: '94013000',
+    title: 'GR SpinePro High-Back Breathable Mesh Ergonomic Office Chair',
+    description: 'Dynamic lumbar feedback system, 4D adjustable armrests, synchronous multi-tilt lock mechanism, and Class-4 BIFMA explosion-proof gas lift.',
+    category: 'Office & Workspaces',
+    image: 'https://images.unsplash.com/photo-1580481077195-c3a822075dc6?auto=format&fit=crop&w=800&q=80',
+    images: ['https://images.unsplash.com/photo-1580481077195-c3a822075dc6?auto=format&fit=crop&w=800&q=80'],
+    retailPrice: 14999,
+    mrp: 21990,
+    wholesalePrice: 10800,
+    priceTiers: [
+      { minQuantity: 10, maxQuantity: 29, pricePerUnit: 10200, savingsPercentage: 32 },
+      { minQuantity: 30, maxQuantity: 59, pricePerUnit: 9400, savingsPercentage: 37 },
+      { minQuantity: 60, pricePerUnit: 8600, savingsPercentage: 43 },
+    ],
+    moq: 10,
+    casePackSize: 2,
+    stock: 310,
+    unit: 'chair',
+    rating: 4.7,
+    reviewsCount: 215,
+    isRfqEligible: true,
+    taxRatePercent: 18,
+    features: [
+      'Auto-Tuning Adaptive Lumbar Cushioning',
+      'German High-Tensile Breathable Polyester Mesh',
+      'Heavy-Duty Aluminum Alloy Base with Mute Castors',
+      'Certified for 8+ Hours daily corporate usage',
+    ],
+    specifications: {
+      'Weight Capacity': '150 kg',
+      'Gas Lift': 'Class-4 KGS Certified',
+      'Recline Angle': '90° to 135° with 3 Locking Positions',
+    },
+    variants: [
+      { id: 'v-chr-blk', name: 'Stealth Black Mesh', sku: 'GRE-CHR-ERGO9-BLK', additionalPrice: 0, stock: 210 },
+      { id: 'v-chr-gry', name: 'Storm Grey Mesh', sku: 'GRE-CHR-ERGO9-GRY', additionalPrice: 500, stock: 100 },
+    ],
+  },
+  {
+    id: 'prod-4',
+    sku: 'GRE-BOX-3PLY50',
+    hsnCode: '48191010',
+    title: 'GR Heavy-Duty 3-Ply Corrugated Shipping Boxes (Pack of 50)',
+    description: 'Grade-A 180 GSM kraft paper corrugated cartons designed for e-commerce dispatch, courier transit, and warehouse pallet stacking.',
+    category: 'Packaging & Shipping',
+    image: 'https://images.unsplash.com/photo-1530587191325-3db32d826c18?auto=format&fit=crop&w=800&q=80',
+    images: ['https://images.unsplash.com/photo-1530587191325-3db32d826c18?auto=format&fit=crop&w=800&q=80'],
+    retailPrice: 990,
+    mrp: 1450,
+    wholesalePrice: 650,
+    priceTiers: [
+      { minQuantity: 20, maxQuantity: 49, pricePerUnit: 590, savingsPercentage: 40 },
+      { minQuantity: 50, maxQuantity: 99, pricePerUnit: 520, savingsPercentage: 47 },
+      { minQuantity: 100, pricePerUnit: 460, savingsPercentage: 53 },
+    ],
+    moq: 20,
+    casePackSize: 10,
+    stock: 2500,
+    unit: 'pack (50 pcs)',
+    rating: 4.9,
+    reviewsCount: 340,
+    isRfqEligible: true,
+    taxRatePercent: 12,
+    features: [
+      '180 GSM High-Compression Bursting Strength',
+      'Pre-creased for instant 5-second fold assembly',
+      'Standard 12x8x6 inch size ideal for tech & retail goods',
+    ],
+    specifications: {
+      'Flute Type': 'B-Flute 3-Ply',
+      'Dimensions': '30cm x 20cm x 15cm',
+      'Bursting Factor': '18 BF',
+    },
+    variants: [],
+  },
+  {
+    id: 'prod-5',
+    sku: 'GRE-TPE-BOPP72',
+    hsnCode: '39191000',
+    title: 'GR StrongAdhere 65-Micron Heavy Industrial BOPP Packing Tape (Pack of 6 Rolls)',
+    description: 'High-shear water-based acrylic adhesive tape designed for corrugated carton sealing in cold and humid Indian logistics conditions.',
+    category: 'Packaging & Shipping',
+    image: 'https://images.unsplash.com/photo-1589939705384-5185137a7f0f?auto=format&fit=crop&w=800&q=80',
+    images: ['https://images.unsplash.com/photo-1589939705384-5185137a7f0f?auto=format&fit=crop&w=800&q=80'],
+    retailPrice: 699,
+    mrp: 999,
+    wholesalePrice: 420,
+    priceTiers: [
+      { minQuantity: 25, maxQuantity: 99, pricePerUnit: 380, savingsPercentage: 45 },
+      { minQuantity: 100, pricePerUnit: 330, savingsPercentage: 52 },
+    ],
+    moq: 25,
+    casePackSize: 12,
+    stock: 1800,
+    unit: 'pack (6 rolls)',
+    rating: 4.8,
+    reviewsCount: 160,
+    isRfqEligible: false,
+    taxRatePercent: 18,
+    features: [
+      '65 Micron industrial thickness resists snapping under tension',
+      '65 meters continuous roll length',
+      'UV & moisture resistant',
+    ],
+    specifications: {
+      'Tape Width': '48mm (2 inches)',
+      'Roll Length': '65 meters',
+      'Adhesive Type': 'Water-based Acrylic',
+    },
+    variants: [],
+  },
+  {
+    id: 'prod-6',
+    sku: 'GRE-BAR-SCAN2D',
+    hsnCode: '84716024',
+    title: 'GR RapidScan Wireless 2D QR & Barcode Handheld Scanner',
+    description: 'Industrial IP54 drop-tested scanner with 2.4GHz USB dongle and Bluetooth 5.0. Scans through crinkled and plastic-wrapped barcodes.',
+    category: 'Commercial Supplies',
+    image: 'https://images.unsplash.com/photo-1616401784845-180882ba9ba8?auto=format&fit=crop&w=800&q=80',
+    images: ['https://images.unsplash.com/photo-1616401784845-180882ba9ba8?auto=format&fit=crop&w=800&q=80'],
+    retailPrice: 3890,
+    mrp: 5490,
+    wholesalePrice: 2850,
+    priceTiers: [
+      { minQuantity: 5, maxQuantity: 19, pricePerUnit: 2600, savingsPercentage: 33 },
+      { minQuantity: 20, pricePerUnit: 2350, savingsPercentage: 39 },
+    ],
+    moq: 5,
+    casePackSize: 1,
+    stock: 85,
+    unit: 'piece',
+    rating: 4.6,
+    reviewsCount: 42,
+    isRfqEligible: true,
+    taxRatePercent: 18,
+    features: [
+      'Scans both 1D and 2D QR codes on physical labels and mobile phone screens',
+      '30-meter wireless transmission distance',
+      '2600mAh rechargeable lithium battery provides 30 hours continuous scanning',
+    ],
+    specifications: {
+      'Connectivity': 'Bluetooth 5.0 + 2.4G Wireless + Type-C Cable',
+      'Battery': '2600mAh Li-ion',
+      'Drop Test': '2.0 meters onto concrete floor',
+    },
+    variants: [],
+  },
+  {
+    id: 'prod-7',
+    sku: 'GRE-PRN-THRM4X6',
+    hsnCode: '84433250',
+    title: 'GR DirectShip 4x6" Commercial Direct Thermal Shipping Label Printer',
+    description: 'High-speed 152mm/s inkless thermal printer compatible with Delhivery, Bluedart, Shiprocket, Amazon ATS, and GST tax invoice labels.',
+    category: 'Commercial Supplies',
+    image: 'https://images.unsplash.com/photo-1612815154858-60aa4c59eaa6?auto=format&fit=crop&w=800&q=80',
+    images: ['https://images.unsplash.com/photo-1612815154858-60aa4c59eaa6?auto=format&fit=crop&w=800&q=80'],
+    retailPrice: 6490,
+    mrp: 8990,
+    wholesalePrice: 4950,
+    priceTiers: [
+      { minQuantity: 5, maxQuantity: 14, pricePerUnit: 4600, savingsPercentage: 30 },
+      { minQuantity: 15, pricePerUnit: 4250, savingsPercentage: 35 },
+    ],
+    moq: 5,
+    casePackSize: 1,
+    stock: 95,
+    unit: 'printer',
+    rating: 4.8,
+    reviewsCount: 76,
+    isRfqEligible: true,
+    taxRatePercent: 18,
+    features: [
+      'No ink, no toner, no ribbon required (Direct Thermal Technology)',
+      'Prints standard 4x6 shipping labels at 152mm per second',
+      'Automatic label identification and paper return system',
+    ],
+    specifications: {
+      'Resolution': '203 DPI (8 dots/mm)',
+      'Printing Speed': '152 mm/s',
+      'Media Width': '40mm - 110mm',
+    },
+    variants: [],
+  },
+  {
+    id: 'prod-8',
+    sku: 'GRE-AIR-COL100',
+    hsnCode: '39239090',
+    title: 'GR Inflatable Air Column Protective Cushion Wrap (Roll 100m)',
+    description: 'Independent air chambers that stay inflated even if one column is punctured. Maximum drop impact protection for fragile electronics and liquids.',
+    category: 'Packaging & Shipping',
+    image: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=800&q=80',
+    images: ['https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=800&q=80'],
+    retailPrice: 1290,
+    mrp: 1850,
+    wholesalePrice: 850,
+    priceTiers: [
+      { minQuantity: 10, maxQuantity: 24, pricePerUnit: 780, savingsPercentage: 40 },
+      { minQuantity: 25, pricePerUnit: 710, savingsPercentage: 45 },
+    ],
+    moq: 10,
+    casePackSize: 1,
+    stock: 450,
+    unit: 'roll (100m)',
+    rating: 4.7,
+    reviewsCount: 94,
+    isRfqEligible: false,
+    taxRatePercent: 18,
+    features: [
+      'Multi-layer co-extruded PE+PA film with 60 micron wall strength',
+      'Replaces bulky styrofoam and saves 90% warehouse storage space before inflation',
+      'Free manual hand inflation pump included with each roll',
+    ],
+    specifications: {
+      'Film Material': '9-Layer PE/PA Co-extruded',
+      'Roll Dimensions': '30cm height x 100 meters length',
+    },
+    variants: [],
+  },
+];
+
+const INITIAL_USERS = [
+  {
+    id: 'user-admin',
+    name: 'Gaurav Rawat (Store Owner & Admin)',
+    email: 'admin@grenterprises.in',
+    phone: '+91 98370 12345',
+    role: 'admin',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+    joinedDate: '2026-01-01',
+  },
+  {
+    id: 'user-d2c-priya',
+    name: 'Priya Sharma (Retail Customer)',
+    email: 'priya.sharma@example.com',
+    phone: '+91 99301 23456',
+    role: 'd2c_customer',
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80',
+    joinedDate: '2026-09-10',
+    savedAddresses: [
+      {
+        street: '42 Blossom Residency, Civil Lines',
+        landmark: 'Opposite Circuit House',
+        city: 'Meerut',
+        state: 'Uttar Pradesh',
+        postalCode: '250001',
+        country: 'India',
+      },
+    ],
+  },
+  {
+    id: 'user-b2b-approved',
+    name: 'Rajesh Gupta (Acme Logistics)',
+    email: 'rajesh@acmelogistics.in',
+    phone: '+91 98200 45678',
+    role: 'b2b_approved',
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=200&q=80',
+    joinedDate: '2026-08-15',
+    businessProfile: {
+      id: 'app-001',
+      userId: 'user-b2b-approved',
+      businessName: 'Acme Logistics & Supply Corp',
+      businessType: 'Private Limited (Pvt Ltd)',
+      gstin: '09AABCU9603R1ZM',
+      panNumber: 'AABCU9603R',
+      website: 'https://acmelogistics.in',
+      contactName: 'Rajesh Gupta',
+      contactEmail: 'rajesh@acmelogistics.in',
+      contactPhone: '+91 98200 45678',
+      designation: 'Procurement Director',
+      monthlyVolume: '₹10,00,000 - ₹25,00,000',
+      shopAddress: {
+        street: 'Plot 45, Sector 12, Phase II, Industrial Area',
+        city: 'Meerut',
+        state: 'Uttar Pradesh',
+        postalCode: '250003',
+        country: 'India',
+      },
+      billingAddress: {
+        street: 'Plot 45, Sector 12, Phase II, Industrial Area',
+        city: 'Meerut',
+        state: 'Uttar Pradesh',
+        postalCode: '250003',
+        country: 'India',
+      },
+      shippingAddress: {
+        street: 'Plot 45, Sector 12, Phase II, Industrial Area',
+        city: 'Meerut',
+        state: 'Uttar Pradesh',
+        postalCode: '250003',
+        country: 'India',
+      },
+      sameAsShopAddress: true,
+      resaleCertFileName: 'UP_GST_Registration_Certificate_Acme.pdf',
+      supportingDocName: 'Incorporation_CIN_MoA_Acme.pdf',
+      status: 'approved',
+      adminNotes: 'Verified via Meerut GST Portal. Net-30 credit sanctioned up to ₹5,00,000.',
+      appliedDate: '2026-08-12',
+      reviewedDate: '2026-08-15',
+      reviewedBy: 'Meerut Admin Office',
+      creditLimit: 500000,
+      paymentTerms: 'Net 30',
+    },
+  },
+  {
+    id: 'user-b2b-pending',
+    name: 'Vikram Malhotra (Zenith Enterprises)',
+    email: 'vikram@zenithenterprises.in',
+    phone: '+91 98450 11223',
+    role: 'b2b_pending',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
+    joinedDate: '2026-09-24',
+    businessProfile: {
+      id: 'app-002',
+      userId: 'user-b2b-pending',
+      businessName: 'Zenith Tech Distribution LLP',
+      businessType: 'Limited Liability Partnership (LLP)',
+      gstin: '09AAAFZ8821Q1Z6',
+      panNumber: 'AAAFZ8821Q',
+      website: 'https://zenithenterprises.in',
+      contactName: 'Vikram Malhotra',
+      contactEmail: 'vikram@zenithenterprises.in',
+      contactPhone: '+91 98450 11223',
+      designation: 'Managing Partner',
+      monthlyVolume: '₹5,00,000 - ₹10,00,000',
+      shopAddress: {
+        street: 'Shop 14, Electronic Market, Begum Bridge Road',
+        city: 'Meerut',
+        state: 'Uttar Pradesh',
+        postalCode: '250001',
+        country: 'India',
+      },
+      billingAddress: {
+        street: 'Shop 14, Electronic Market, Begum Bridge Road',
+        city: 'Meerut',
+        state: 'Uttar Pradesh',
+        postalCode: '250001',
+        country: 'India',
+      },
+      shippingAddress: {
+        street: 'Shop 14, Electronic Market, Begum Bridge Road',
+        city: 'Meerut',
+        state: 'Uttar Pradesh',
+        postalCode: '250001',
+        country: 'India',
+      },
+      sameAsShopAddress: true,
+      resaleCertFileName: 'GST_Certificate_Zenith.pdf',
+      status: 'pending',
+      adminNotes: 'Application under review at Meerut Head Office.',
+      appliedDate: '2026-09-24',
+      creditLimit: 0,
+      paymentTerms: 'Advance',
+    },
+  },
+];
+
+const INITIAL_ORDERS = [
+  {
+    id: 'ord-b2b-101',
+    orderNumber: 'GRE-B2B-2026-0891',
+    date: '2026-09-22',
+    mode: 'B2B',
+    customerId: 'user-b2b-approved',
+    customerName: 'Rajesh Gupta',
+    customerEmail: 'rajesh@acmelogistics.in',
+    customerPhone: '+91 98200 45678',
+    businessDetails: {
+      businessName: 'Acme Logistics & Supply Corp',
+      gstin: '09AABCU9603R1ZM',
+      businessType: 'Private Limited (Pvt Ltd)',
+      panNumber: 'AABCU9603R',
+    },
+    shippingAddress: {
+      street: 'GR Regional Logistics Hub, Transport Nagar',
+      city: 'Meerut',
+      state: 'Uttar Pradesh',
+      postalCode: '250002',
+      country: 'India',
+    },
+    billingAddress: {
+      street: 'Tower B, 4th Floor, Meerut Business Center, Delhi Road',
+      city: 'Meerut',
+      state: 'Uttar Pradesh',
+      postalCode: '250002',
+      country: 'India',
+    },
+    items: [
+      {
+        productId: 'prod-1',
+        productTitle: 'GR ProView 34" UltraWide Curved 4K HDR Monitor',
+        sku: 'GRE-MON-4K34-SLV',
+        hsnCode: '85285200',
+        unit: 'unit',
+        quantity: 20,
+        unitPrice: 26500,
+        totalPrice: 530000,
+        taxAmount: 95400,
+        variantName: 'Platinum Silver Stand',
+      },
+    ],
+    subtotal: 530000,
+    discountAmount: 15000,
+    promoCode: 'CORP5',
+    shippingFee: 0,
+    taxAmount: 92700,
+    taxBreakdown: {
+      cgst: 46350,
+      sgst: 46350,
+      igst: 0,
+    },
+    totalAmount: 607700,
+    status: 'Dispatched',
+    paymentMethod: 'B2B Credit (Net 30)',
+    paymentStatus: 'Pending Invoice',
+    trackingNumber: 'DTDC-GRE-9988221',
+    invoiceNumber: 'INV-2026-GRE-B2B-0429',
+  },
+  {
+    id: 'ord-d2c-201',
+    orderNumber: 'GRE-D2C-2026-4432',
+    date: '2026-09-25',
+    mode: 'D2C',
+    customerId: 'user-d2c-priya',
+    customerName: 'Priya Sharma',
+    customerEmail: 'priya.sharma@example.com',
+    customerPhone: '+91 99301 23456',
+    shippingAddress: {
+      street: '42 Blossom Residency, Civil Lines',
+      city: 'Meerut',
+      state: 'Uttar Pradesh',
+      postalCode: '250001',
+      country: 'India',
+    },
+    billingAddress: {
+      street: '42 Blossom Residency, Civil Lines',
+      city: 'Meerut',
+      state: 'Uttar Pradesh',
+      postalCode: '250001',
+      country: 'India',
+    },
+    items: [
+      {
+        productId: 'prod-3',
+        productTitle: 'GR SpinePro High-Back Breathable Mesh Ergonomic Office Chair',
+        sku: 'GRE-CHR-ERGO9-BLK',
+        hsnCode: '94013000',
+        unit: 'chair',
+        quantity: 1,
+        unitPrice: 14999,
+        totalPrice: 14999,
+        taxAmount: 2288,
+        variantName: 'Stealth Black Mesh',
+      },
+    ],
+    subtotal: 14999,
+    discountAmount: 1499,
+    promoCode: 'SAVE10',
+    shippingFee: 0,
+    taxAmount: 2059,
+    taxBreakdown: {
+      cgst: 1029.5,
+      sgst: 1029.5,
+      igst: 0,
+    },
+    totalAmount: 15559,
+    status: 'Delivered',
+    paymentMethod: 'UPI / NetBanking',
+    paymentStatus: 'Paid',
+    trackingNumber: 'DELHIVERY-GRE-882199',
+    invoiceNumber: 'INV-2026-GRE-D2C-0842',
+  },
+];
+
+const seedDatabase = async () => {
+  try {
+    console.log(`Connecting to MongoDB at: ${MONGODB_URI}`);
+    await mongoose.connect(MONGODB_URI);
+    console.log('✅ Connected to MongoDB');
+
+    // 1. Seed Store Settings
+    console.log('Seeding Store Settings...');
+    await StoreSettingsModel.deleteMany({});
+    await StoreSettingsModel.create(INITIAL_STORE_SETTINGS);
+    console.log('✅ Store Settings seeded (Meerut Hub)');
+
+    // 2. Seed Products
+    console.log('Seeding Product Catalog...');
+    await ProductModel.deleteMany({});
+    await ProductModel.insertMany(INITIAL_PRODUCTS);
+    console.log(`✅ ${INITIAL_PRODUCTS.length} Products seeded successfully`);
+
+    // 3. Seed Users
+    console.log('Seeding User Accounts & B2B Profiles...');
+    await UserModel.deleteMany({});
+    for (const u of INITIAL_USERS) {
+      await UserModel.create(u);
+    }
+    console.log(`✅ ${INITIAL_USERS.length} User accounts seeded successfully`);
+
+    // 4. Seed Orders
+    console.log('Seeding Sample Orders & Tax Invoices...');
+    await OrderModel.deleteMany({});
+    await OrderModel.insertMany(INITIAL_ORDERS);
+    console.log(`✅ ${INITIAL_ORDERS.length} Orders seeded successfully`);
+
+    console.log('\n🎉 [MongoDB Seed Complete] All GR Enterprises data is ready in MongoDB!');
+    process.exit(0);
+  } catch (error: any) {
+    console.error('❌ Seeding Failed:', error.message);
+    process.exit(1);
+  }
+};
+
+seedDatabase();

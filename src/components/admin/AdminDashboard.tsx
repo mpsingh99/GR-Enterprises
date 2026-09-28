@@ -52,7 +52,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose,
     storeSettings,
     updateStoreSettings,
     showToast,
-    resetAllData
+    resetAllData,
+    dbStatus
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'applications' | 'products' | 'orders' | 'quotes' | 'customers' | 'settings'>('overview');
@@ -237,6 +238,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose,
                 </h2>
                 <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
                   Meerut Headquarters
+                </span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border flex items-center gap-1 ${
+                  dbStatus?.connected 
+                    ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50' 
+                    : 'bg-slate-800 text-slate-300 border-slate-700'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${dbStatus?.connected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`}></span>
+                  <span>{dbStatus?.connected ? 'MongoDB Live' : 'Database Ready'}</span>
                 </span>
               </div>
               <p className="text-xs text-slate-400">
