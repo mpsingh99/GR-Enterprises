@@ -318,7 +318,7 @@ async function dispatchRealOtp(phone: string, otp: string, channel: 'sms' | 'wha
 
   // 1. Fast2SMS Indian SMS Gateway (Quick SMS & OTP API)
   const fast2smsKey = process.env.FAST2SMS_API_KEY;
-  if (fast2smsKey && channel === 'sms') {
+  if (fast2smsKey && (channel === 'sms' || !process.env.TWILIO_ACCOUNT_SID)) {
     try {
       const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(fast2smsKey)}&route=otp&variables_values=${otp}&flash=0&numbers=${cleanPhone}`;
       const res = await fetch(url, { method: 'GET', headers: { 'cache-control': 'no-cache' } });
