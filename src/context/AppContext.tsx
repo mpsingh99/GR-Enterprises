@@ -38,6 +38,7 @@ import {
   apiUpdateProduct,
   apiDeleteProduct,
   apiUpdateOrderStatus,
+  apiLogin,
   apiSendOtp,
   apiVerifyOtp
 } from '../services/api';
@@ -130,28 +131,30 @@ interface AppContextType {
   setAuthModalTab: (tab: 'signup' | 'signin') => void;
   openAuthModal: (tab?: 'signup' | 'signin') => void;
   registerGoogleRetailUser: (profile: {
-    name: string;
-    email: string;
+    credential?: string;
+    name?: string;
+    email?: string;
     avatar?: string;
-    phone: string;
-    address: Address;
-  }) => User;
+    phone?: string;
+    address?: Address;
+  }) => Promise<User | null>;
   registerRetailUser: (profile: {
     name: string;
     email: string;
-    phone: string;
-    address: Address;
+    phone?: string;
+    address?: Address;
     password?: string;
-  }) => User;
+  }) => Promise<User | null>;
+  loginUser: (email: string, password?: string) => Promise<User | null>;
   isGoogleAuthModalOpen: boolean;
   setIsGoogleAuthModalOpen: (open: boolean) => void;
 
   // Mobile OTP & WhatsApp Message Authenticator
   sendPhoneOtp: (phone: string, channel?: 'sms' | 'whatsapp') => Promise<{
     success: boolean;
-    simulatedOtp?: string;
-    messagePreview?: string;
     message: string;
+    dispatched?: boolean;
+    gatewayNotice?: string;
   }>;
   loginWithPhoneOtp: (phone: string, otp: string, name?: string, address?: Address) => Promise<User | null>;
 
@@ -446,192 +449,145 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('User Role Updated', `User permissions updated to ${newRole.toUpperCase()}`, 'success');
   };
 
-  const registerGoogleRetailUser = (profile: {
-    name: string;
-    email: string;
+  const registerGoogleRetailUser = async (profile: {
+    credential?: string;
+    name?: string;
+    email?: string;
     avatar?: string;
-    phone: string;
-    address: Address;
-  }): User => {
-    const cleanEmail = profile.email.trim().toLowerCase();
-    const existingIndex = users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+    phone?: string;
+    address?: Address;
+  }): Promise<User | null> => {
+    try {
+      const backendUser = await apiGoogleSync({
+        credential: profile.credential,
+        name: profile.name,
+        email: profile.email,
+        avatar: profile.avatar,
+        phone: profile.phone,
+        address: profile.address
+      });
 
-    let resolvedUser: User;
-
-    if (existingIndex > -1) {
-      const existing = users[existingIndex];
-      const addresses = existing.savedAddresses ? [...existing.savedAddresses] : [];
-      const hasAddr = addresses.some(
-        a => a.street.toLowerCase() === profile.address.street.toLowerCase() &&
-             a.postalCode === profile.address.postalCode
-      );
-      if (!hasAddr) {
-        addresses.unshift(profile.address);
+      if (!backendUser) {
+        showToast('Google Sign-In Notice', 'Could not sync Google credentials to MongoDB database. Please try again.', 'error');
+        return null;
       }
 
-      resolvedUser = {
-        ...existing,
-        name: profile.name || existing.name,
-        phone: profile.phone || existing.phone,
-        avatar: profile.avatar || existing.avatar,
-        authProvider: 'google',
-        role: 'd2c_customer',
-        savedAddresses: addresses
-      };
+      setCurrentUser(backendUser);
+      setModeState('D2C');
+      setUsers(prev => [backendUser, ...prev.filter(u => u.email.toLowerCase() !== backendUser.email.toLowerCase())]);
 
-      setUsers(prev => {
-        const next = [...prev];
-        next[existingIndex] = resolvedUser;
-        return next;
-      });
-    } else {
-      resolvedUser = {
-        id: `user-google-${Date.now().toString().slice(-6)}`,
-        name: profile.name,
-        email: cleanEmail,
-        phone: profile.phone,
-        role: 'd2c_customer',
-        avatar: profile.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(profile.name)}`,
-        authProvider: 'google',
-        joinedDate: new Date().toISOString().split('T')[0],
-        savedAddresses: [profile.address]
-      };
+      if (guestOrderIds.length > 0) {
+        setOrders(prev => prev.map(o => {
+          if (guestOrderIds.includes(o.id)) {
+            return {
+              ...o,
+              customerId: backendUser.id,
+              customerName: backendUser.name,
+              customerEmail: backendUser.email,
+              customerPhone: backendUser.phone || o.customerPhone,
+              isGuest: false
+            };
+          }
+          return o;
+        }));
+      }
 
-      setUsers(prev => [resolvedUser, ...prev]);
+      showToast(
+        'Google Verified & Saved',
+        `Welcome to GR Enterprises, ${backendUser.name}! Account saved directly in MongoDB database.`,
+        'success'
+      );
+
+      return backendUser;
+    } catch (err: any) {
+      showToast('Google Sign-In Error', err.message || 'Failed to authenticate with Google.', 'error');
+      return null;
     }
-
-    setCurrentUser(resolvedUser);
-    setModeState('D2C');
-
-    // Link any session guest orders to this newly authenticated Google account
-    if (guestOrderIds.length > 0) {
-      setOrders(prev => prev.map(o => {
-        if (guestOrderIds.includes(o.id)) {
-          return {
-            ...o,
-            customerId: resolvedUser.id,
-            customerName: resolvedUser.name,
-            customerEmail: resolvedUser.email,
-            customerPhone: resolvedUser.phone || o.customerPhone,
-            isGuest: false
-          };
-        }
-        return o;
-      }));
-    }
-
-    showToast(
-      'Google Retail Sign-Up Verified',
-      `Welcome to GR Enterprises, ${profile.name}! Your retail customer account, phone, and delivery address are verified.`,
-      'success'
-    );
-
-    // Sync to MongoDB Atlas backend in background
-    apiGoogleSync({
-      name: resolvedUser.name,
-      email: resolvedUser.email,
-      avatar: resolvedUser.avatar,
-      phone: resolvedUser.phone,
-      address: profile.address
-    }).catch(err => console.warn('Background MongoDB Atlas Google sync warning:', err));
-
-    return resolvedUser;
   };
 
-  const registerRetailUser = (profile: {
+  const registerRetailUser = async (profile: {
     name: string;
     email: string;
-    phone: string;
-    address: Address;
+    phone?: string;
+    address?: Address;
     password?: string;
-  }): User => {
-    const cleanEmail = profile.email.trim().toLowerCase();
-    const existingIndex = users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+  }): Promise<User | null> => {
+    try {
+      const backendUser = await apiRegisterRetail({
+        name: profile.name,
+        email: profile.email,
+        password: profile.password,
+        phone: profile.phone,
+        address: profile.address
+      });
 
-    let resolvedUser: User;
-
-    if (existingIndex > -1) {
-      const existing = users[existingIndex];
-      const addresses = existing.savedAddresses ? [...existing.savedAddresses] : [];
-      const hasAddr = addresses.some(
-        a => a.street.toLowerCase() === profile.address.street.toLowerCase() &&
-             a.postalCode === profile.address.postalCode
-      );
-      if (!hasAddr) {
-        addresses.unshift(profile.address);
+      if (!backendUser) {
+        showToast('Sign-Up Failed', 'Unable to create account in database. Please check your details or try signing in.', 'error');
+        return null;
       }
 
-      resolvedUser = {
-        ...existing,
-        name: profile.name || existing.name,
-        phone: profile.phone || existing.phone,
-        role: 'd2c_customer',
-        savedAddresses: addresses
-      };
+      setCurrentUser(backendUser);
+      setModeState('D2C');
+      setUsers(prev => [backendUser, ...prev.filter(u => u.email.toLowerCase() !== backendUser.email.toLowerCase())]);
 
-      setUsers(prev => {
-        const next = [...prev];
-        next[existingIndex] = resolvedUser;
-        return next;
-      });
-    } else {
-      resolvedUser = {
-        id: `user-retail-${Date.now().toString().slice(-6)}`,
-        name: profile.name,
-        email: cleanEmail,
-        phone: profile.phone,
-        role: 'd2c_customer',
-        avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(profile.name)}`,
-        authProvider: 'email',
-        joinedDate: new Date().toISOString().split('T')[0],
-        savedAddresses: [profile.address]
-      };
+      if (guestOrderIds.length > 0) {
+        setOrders(prev => prev.map(o => {
+          if (guestOrderIds.includes(o.id)) {
+            return {
+              ...o,
+              customerId: backendUser.id,
+              customerName: backendUser.name,
+              customerEmail: backendUser.email,
+              customerPhone: backendUser.phone || o.customerPhone,
+              isGuest: false
+            };
+          }
+          return o;
+        }));
+      }
 
-      setUsers(prev => [resolvedUser, ...prev]);
+      showToast(
+        'Account Registered in Database',
+        `Welcome to GR Enterprises, ${backendUser.name}! Your account and delivery details are safely stored in MongoDB Atlas.`,
+        'success'
+      );
+
+      return backendUser;
+    } catch (err: any) {
+      showToast('Registration Error', err.message || 'Failed to register account.', 'error');
+      return null;
     }
-
-    setCurrentUser(resolvedUser);
-    setModeState('D2C');
-
-    if (guestOrderIds.length > 0) {
-      setOrders(prev => prev.map(o => {
-        if (guestOrderIds.includes(o.id)) {
-          return {
-            ...o,
-            customerId: resolvedUser.id,
-            customerName: resolvedUser.name,
-            customerEmail: resolvedUser.email,
-            customerPhone: resolvedUser.phone || o.customerPhone,
-            isGuest: false
-          };
-        }
-        return o;
-      }));
-    }
-
-    showToast(
-      'Account Created Successfully',
-      `Welcome to GR Enterprises, ${profile.name}! Your retail customer account, mobile phone, and delivery address are saved.`,
-      'success'
-    );
-
-    // Sync to MongoDB Atlas backend in background
-    apiRegisterRetail({
-      name: resolvedUser.name,
-      email: resolvedUser.email,
-      password: profile.password,
-      phone: resolvedUser.phone,
-      address: profile.address
-    }).catch(err => console.warn('Background MongoDB Atlas Retail sync warning:', err));
-
-    return resolvedUser;
   };
 
-  // Mobile OTP & WhatsApp Message Authenticator implementations
+  const loginUser = async (email: string, password?: string): Promise<User | null> => {
+    try {
+      const backendUser = await apiLogin(email, password);
+      if (!backendUser) {
+        showToast('Login Failed', 'Invalid email or password. Please verify credentials or sign up.', 'error');
+        return null;
+      }
+
+      setCurrentUser(backendUser);
+      if (backendUser.role.startsWith('b2b')) {
+        setModeState('B2B');
+      } else {
+        setModeState('D2C');
+      }
+      setUsers(prev => [backendUser, ...prev.filter(u => u.email.toLowerCase() !== backendUser.email.toLowerCase())]);
+
+      showToast('Logged In Successfully', `Welcome back, ${backendUser.name}!`, 'success');
+      return backendUser;
+    } catch (err: any) {
+      showToast('Login Error', err.message || 'Unable to log in.', 'error');
+      return null;
+    }
+  };
+
+  // Real Mobile OTP & WhatsApp Message Authenticator implementations
   const sendPhoneOtp = async (
     phone: string,
     channel: 'sms' | 'whatsapp' = 'sms'
-  ): Promise<{ success: boolean; simulatedOtp?: string; messagePreview?: string; message: string }> => {
+  ): Promise<{ success: boolean; message: string; dispatched?: boolean; gatewayNotice?: string }> => {
     const cleanPhone = phone.replace(/\D/g, '').slice(-10);
     if (cleanPhone.length !== 10) {
       return {
@@ -645,27 +601,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (res && res.success) {
         return {
           success: true,
-          simulatedOtp: res.simulatedOtp,
-          messagePreview: res.messagePreview,
-          message: res.message
+          message: res.message,
+          dispatched: res.dispatched,
+          gatewayNotice: res.gatewayNotice
         };
       }
-    } catch (err) {
-      console.warn('Backend OTP service notice:', err);
+      return {
+        success: false,
+        message: res?.message || 'Failed to send verification code from server.'
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Network error reaching authentication server.'
+      };
     }
-
-    // Fallback if backend API is temporarily offline
-    const randomOtp = Math.floor(100000 + Math.random() * 900000).toString();
-    const preview = channel === 'whatsapp'
-      ? `🟢 WhatsApp from GR Enterprises: Your secure login verification code is ${randomOtp}. Valid for 10 minutes for Meerut central fulfillment.`
-      : `💬 SMS from GR-ENT: Your GR Enterprises verification code is ${randomOtp}. Valid for 10 mins. Do not share this OTP with anyone.`;
-
-    return {
-      success: true,
-      simulatedOtp: randomOtp,
-      messagePreview: preview,
-      message: `Verification code sent via ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'} to +91 ${cleanPhone}`
-    };
   };
 
   const loginWithPhoneOtp = async (
@@ -677,92 +627,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cleanPhone = phone.replace(/\D/g, '').slice(-10);
     if (!cleanPhone || !otp) return null;
 
-    let backendUser: User | null = null;
     try {
-      backendUser = await apiVerifyOtp({
+      const backendUser = await apiVerifyOtp({
         phone: cleanPhone,
         otp,
         name,
         address
       });
-    } catch (err) {
-      console.warn('Backend OTP verification notice:', err);
-    }
 
-    let resolvedUser: User;
-    if (backendUser) {
-      resolvedUser = backendUser;
-      setUsers(prev => {
-        const idx = prev.findIndex(u => u.id === backendUser!.id || (u.phone && u.phone.includes(cleanPhone)));
-        if (idx > -1) {
-          const next = [...prev];
-          next[idx] = backendUser!;
-          return next;
-        }
-        return [backendUser!, ...prev];
-      });
-    } else {
-      // Local resolution fallback
-      const existingIndex = users.findIndex(u => u.phone && u.phone.includes(cleanPhone));
-      if (existingIndex > -1) {
-        const existing = users[existingIndex];
-        resolvedUser = {
-          ...existing,
-          name: name?.trim() || existing.name,
-          phone: `+91 ${cleanPhone}`,
-          role: 'd2c_customer',
-          savedAddresses: address
-            ? [address, ...(existing.savedAddresses || [])]
-            : (existing.savedAddresses || [])
-        };
-        setUsers(prev => {
-          const next = [...prev];
-          next[existingIndex] = resolvedUser;
-          return next;
-        });
-      } else {
-        resolvedUser = {
-          id: `usr-phone-${Date.now().toString().slice(-6)}`,
-          name: name?.trim() || `Customer +91 ${cleanPhone}`,
-          email: `${cleanPhone}@phone.grenterprises.in`,
-          phone: `+91 ${cleanPhone}`,
-          role: 'd2c_customer',
-          avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name || cleanPhone)}`,
-          authProvider: 'phone',
-          joinedDate: new Date().toISOString().split('T')[0],
-          savedAddresses: address ? [address] : []
-        };
-        setUsers(prev => [resolvedUser, ...prev]);
+      if (!backendUser) {
+        showToast('Verification Failed', 'Invalid or expired OTP code. Please enter the correct code sent to your phone.', 'error');
+        return null;
       }
+
+      setCurrentUser(backendUser);
+      setModeState('D2C');
+      setUsers(prev => [backendUser, ...prev.filter(u => u.id !== backendUser.id)]);
+
+      // Link guest orders
+      if (guestOrderIds.length > 0) {
+        setOrders(prev => prev.map(o => {
+          if (guestOrderIds.includes(o.id)) {
+            return {
+              ...o,
+              customerId: backendUser.id,
+              customerName: backendUser.name,
+              customerEmail: backendUser.email,
+              customerPhone: backendUser.phone || o.customerPhone,
+              isGuest: false
+            };
+          }
+          return o;
+        }));
+      }
+
+      showToast(
+        'Mobile Number Verified',
+        `Welcome to GR Enterprises, ${backendUser.name}! Account verified and saved in MongoDB Atlas.`,
+        'success'
+      );
+
+      return backendUser;
+    } catch (err: any) {
+      showToast('Verification Error', err.message || 'OTP verification failed.', 'error');
+      return null;
     }
-
-    setCurrentUser(resolvedUser);
-    setModeState('D2C');
-
-    // Link guest orders
-    if (guestOrderIds.length > 0) {
-      setOrders(prev => prev.map(o => {
-        if (guestOrderIds.includes(o.id)) {
-          return {
-            ...o,
-            customerId: resolvedUser.id,
-            customerName: resolvedUser.name,
-            customerEmail: resolvedUser.email,
-            customerPhone: resolvedUser.phone || o.customerPhone,
-            isGuest: false
-          };
-        }
-        return o;
-      }));
-    }
-
-    showToast(
-      'Mobile Verification Successful',
-      `Welcome to GR Enterprises! Logged in securely with +91 ${cleanPhone}.`,
-      'success'
-    );
-
-    return resolvedUser;
   };
 
   // Pricing helper for B2B tiers
@@ -1168,6 +1077,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         openAuthModal,
         registerGoogleRetailUser,
         registerRetailUser,
+        loginUser,
         sendPhoneOtp,
         loginWithPhoneOtp,
         isGoogleAuthModalOpen,

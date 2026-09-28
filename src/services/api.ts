@@ -92,8 +92,9 @@ export const apiRegisterRetail = async (data: {
 };
 
 export const apiGoogleSync = async (data: {
-  name: string;
-  email: string;
+  credential?: string;
+  name?: string;
+  email?: string;
   avatar?: string;
   phone?: string;
   address?: any;
@@ -109,8 +110,8 @@ export interface SendOtpResponse {
   message: string;
   channel: 'sms' | 'whatsapp';
   phone: string;
-  simulatedOtp?: string;
-  messagePreview?: string;
+  dispatched?: boolean;
+  gatewayNotice?: string;
 }
 
 export const apiSendOtp = async (

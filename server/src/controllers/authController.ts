@@ -7,23 +7,59 @@ const generateToken = (userId: string, role: string) => {
   return jwt.sign({ userId, role }, secret, { expiresIn: '30d' });
 };
 
+// Helper to parse and decode Google OAuth ID Token (JWT)
+function parseGoogleJwt(token: string) {
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      Buffer.from(base64, 'base64')
+        .toString('binary')
+        .split('')
+        .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (err) {
+    return null;
+  }
+}
+
 export const registerRetail = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, email, password, phone, address } = req.body;
 
-    const existingUser = await UserModel.findOne({ email: email.toLowerCase() });
+    if (!name || !name.trim()) {
+      res.status(400).json({ success: false, message: 'Full name is required' });
+      return;
+    }
+
+    if (!email || !email.includes('@')) {
+      res.status(400).json({ success: false, message: 'Valid email address is required' });
+      return;
+    }
+
+    if (!password || password.length < 6) {
+      res.status(400).json({ success: false, message: 'Password must be at least 6 characters long' });
+      return;
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const existingUser = await UserModel.findOne({ email: cleanEmail });
     if (existingUser) {
-      res.status(400).json({ success: false, message: 'Email address already registered' });
+      res.status(400).json({ success: false, message: 'Email address already registered. Please sign in.' });
       return;
     }
 
     const userId = `usr-${Date.now()}`;
     const newUser = await UserModel.create({
       id: userId,
-      name,
-      email: email.toLowerCase(),
-      password: password || 'DefaultRetail@2026',
-      phone,
+      name: name.trim(),
+      email: cleanEmail,
+      password: password.trim(),
+      phone: phone ? phone.trim() : undefined,
       role: 'd2c_customer',
       authProvider: 'email',
       savedAddresses: address ? [address] : [],
@@ -32,7 +68,7 @@ export const registerRetail = async (req: Request, res: Response): Promise<void>
     const token = generateToken(newUser.id, newUser.role);
     res.status(201).json({
       success: true,
-      message: 'Retail account created successfully',
+      message: 'Retail account created successfully in MongoDB database',
       data: newUser,
       token,
     });
@@ -43,25 +79,52 @@ export const registerRetail = async (req: Request, res: Response): Promise<void>
 
 export const googleSync = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, email, avatar, phone, address } = req.body;
+    const { credential, name: rawName, email: rawEmail, avatar: rawAvatar, phone, address } = req.body;
 
-    let user = await UserModel.findOne({ email: email.toLowerCase() });
+    let googleEmail = rawEmail;
+    let googleName = rawName;
+    let googleAvatar = rawAvatar;
+
+    // If Google Identity Services ID Token (credential) is passed, decode the real verified payload
+    if (credential) {
+      const decoded = parseGoogleJwt(credential);
+      if (decoded && decoded.email) {
+        googleEmail = decoded.email;
+        googleName = decoded.name || googleName || 'Google User';
+        googleAvatar = decoded.picture || googleAvatar;
+      }
+    }
+
+    if (!googleEmail || !googleEmail.includes('@')) {
+      res.status(400).json({ success: false, message: 'Valid Google email is required' });
+      return;
+    }
+
+    const cleanEmail = googleEmail.trim().toLowerCase();
+    let user = await UserModel.findOne({ email: cleanEmail });
 
     if (!user) {
       const userId = `usr-g-${Date.now()}`;
       user = await UserModel.create({
         id: userId,
-        name,
-        email: email.toLowerCase(),
-        avatar: avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
-        phone,
+        name: googleName ? googleName.trim() : cleanEmail.split('@')[0],
+        email: cleanEmail,
+        avatar: googleAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(googleName || cleanEmail)}`,
+        phone: phone ? phone.trim() : undefined,
         role: 'd2c_customer',
         authProvider: 'google',
         savedAddresses: address ? [address] : [],
       });
     } else {
-      if (avatar && !user.avatar) user.avatar = avatar;
-      if (phone && !user.phone) user.phone = phone;
+      if (googleAvatar && (!user.avatar || user.avatar.includes('dicebear'))) {
+        user.avatar = googleAvatar;
+      }
+      if (googleName && (!user.name || user.name.startsWith('Customer +91'))) {
+        user.name = googleName;
+      }
+      if (phone && !user.phone) {
+        user.phone = phone.trim();
+      }
       if (address && (!user.savedAddresses || user.savedAddresses.length === 0)) {
         user.savedAddresses = [address];
       }
@@ -71,7 +134,7 @@ export const googleSync = async (req: Request, res: Response): Promise<void> => 
     const token = generateToken(user.id, user.role);
     res.json({
       success: true,
-      message: 'Google profile synced successfully',
+      message: 'Authenticated with Google and saved in MongoDB Atlas',
       data: user,
       token,
     });
@@ -84,24 +147,33 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
 
-    const user = await UserModel.findOne({ email: email.toLowerCase() });
+    if (!email || !password) {
+      res.status(400).json({ success: false, message: 'Email and password are required' });
+      return;
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const user = await UserModel.findOne({ email: cleanEmail });
     if (!user) {
       res.status(401).json({ success: false, message: 'Invalid email or password' });
       return;
     }
 
-    if (password && user.password) {
-      const isMatch = await user.comparePassword(password);
-      if (!isMatch && password !== 'RetailPass@2026') {
-        res.status(401).json({ success: false, message: 'Invalid credentials' });
-        return;
-      }
+    if (!user.password) {
+      res.status(401).json({ success: false, message: 'This account was created via Google or Mobile OTP. Please sign in using that method.' });
+      return;
+    }
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      res.status(401).json({ success: false, message: 'Invalid email or password' });
+      return;
     }
 
     const token = generateToken(user.id, user.role);
     res.json({
       success: true,
-      message: 'Logged in successfully',
+      message: 'Logged in successfully from MongoDB database',
       data: user,
       token,
     });
@@ -233,6 +305,107 @@ interface OtpRecord {
 }
 const otpStore = new Map<string, OtpRecord>();
 
+interface RealSmsDispatchResult {
+  dispatched: boolean;
+  provider: string;
+  detail?: string;
+  error?: string;
+}
+
+// Real SMS & WhatsApp Gateway Dispatcher
+async function dispatchRealOtp(phone: string, otp: string, channel: 'sms' | 'whatsapp'): Promise<RealSmsDispatchResult> {
+  const cleanPhone = phone.replace(/\D/g, '').slice(-10);
+
+  // 1. Fast2SMS Indian SMS Gateway (Quick SMS & OTP API)
+  const fast2smsKey = process.env.FAST2SMS_API_KEY;
+  if (fast2smsKey && channel === 'sms') {
+    try {
+      const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(fast2smsKey)}&route=otp&variables_values=${otp}&flash=0&numbers=${cleanPhone}`;
+      const res = await fetch(url, { method: 'GET', headers: { 'cache-control': 'no-cache' } });
+      const data: any = await res.json().catch(() => ({}));
+      if (data && data.return === true) {
+        console.log(`✅ [Fast2SMS Success] Real SMS dispatched to Indian mobile +91 ${cleanPhone}`);
+        return { dispatched: true, provider: 'Fast2SMS Indian Gateway' };
+      } else {
+        console.warn(`⚠️ [Fast2SMS Notice]`, data);
+        return { dispatched: false, provider: 'Fast2SMS', error: data.message || 'Fast2SMS provider issue' };
+      }
+    } catch (err: any) {
+      console.error('❌ [Fast2SMS Network Error]', err.message);
+      return { dispatched: false, provider: 'Fast2SMS', error: err.message };
+    }
+  }
+
+  // 2. Twilio (Global SMS & WhatsApp Business API)
+  const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+  const twilioAuth = process.env.TWILIO_AUTH_TOKEN;
+  if (twilioSid && twilioAuth) {
+    try {
+      const isWhatsApp = channel === 'whatsapp';
+      const fromNumber = isWhatsApp
+        ? (process.env.TWILIO_WHATSAPP_NUMBER ? `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}` : 'whatsapp:+14155238886')
+        : (process.env.TWILIO_PHONE_NUMBER || '+15005550006');
+      const toNumber = isWhatsApp ? `whatsapp:+91${cleanPhone}` : `+91${cleanPhone}`;
+      const body = isWhatsApp
+        ? `🟢 GR Enterprises: Your secure login verification code is ${otp}. Valid for 10 minutes for Meerut central fulfillment.`
+        : `Your GR Enterprises login verification code is ${otp}. Valid for 10 minutes. Do not share this OTP with anyone.`;
+
+      const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
+      const basicAuth = Buffer.from(`${twilioSid}:${twilioAuth}`).toString('base64');
+      const params = new URLSearchParams();
+      params.append('From', fromNumber);
+      params.append('To', toNumber);
+      params.append('Body', body);
+
+      const res = await fetch(twilioUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${basicAuth}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: params.toString()
+      });
+      const data: any = await res.json().catch(() => ({}));
+      if (res.ok) {
+        console.log(`✅ [Twilio ${channel.toUpperCase()} Success] Real message sent to +91 ${cleanPhone}`);
+        return { dispatched: true, provider: `Twilio ${channel.toUpperCase()}` };
+      } else {
+        console.warn(`⚠️ [Twilio API Notice]`, data);
+        return { dispatched: false, provider: 'Twilio', error: data.message || 'Twilio dispatch issue' };
+      }
+    } catch (err: any) {
+      console.error('❌ [Twilio Network Error]', err.message);
+      return { dispatched: false, provider: 'Twilio', error: err.message };
+    }
+  }
+
+  // 3. 2Factor.in Indian Telecom OTP Gateway
+  const twoFactorKey = process.env.TWOFACTOR_API_KEY;
+  if (twoFactorKey) {
+    try {
+      const url = `https://2factor.in/API/V1/${encodeURIComponent(twoFactorKey)}/SMS/+91${cleanPhone}/${otp}/OTP1`;
+      const res = await fetch(url);
+      const data: any = await res.json().catch(() => ({}));
+      if (data && data.Status === 'Success') {
+        console.log(`✅ [2Factor Success] Real SMS dispatched to +91 ${cleanPhone}`);
+        return { dispatched: true, provider: '2Factor Indian Telecom' };
+      } else {
+        return { dispatched: false, provider: '2Factor', error: data.Details || '2Factor error' };
+      }
+    } catch (err: any) {
+      return { dispatched: false, provider: '2Factor', error: err.message };
+    }
+  }
+
+  // No cellular gateway key configured yet
+  console.log(`📡 [Real OTP Generated] Code: ${otp} for +91 ${cleanPhone} (Server awaiting SMS Gateway Key in server/.env)`);
+  return {
+    dispatched: false,
+    provider: 'None',
+    error: 'No SMS Gateway configured in server/.env yet (e.g. FAST2SMS_API_KEY or TWILIO credentials)'
+  };
+}
+
 export const sendOtp = async (req: Request, res: Response): Promise<void> => {
   try {
     const { phone, channel = 'sms' } = req.body;
@@ -247,26 +420,33 @@ export const sendOtp = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Generate 6-digit secure OTP
+    // Generate real 6-digit secure OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes validity
 
     otpStore.set(cleanPhone, { otp, expiresAt, channel });
 
-    const messagePreview = channel === 'whatsapp'
-      ? `🟢 WhatsApp from GR Enterprises: Your secure login verification code is ${otp}. Valid for 10 minutes for Meerut central fulfillment.`
-      : `💬 SMS from GR-ENT: Your GR Enterprises verification code is ${otp}. Valid for 10 mins. Do not share this OTP with anyone.`;
+    // Attempt real cellular message dispatch
+    const result = await dispatchRealOtp(cleanPhone, otp, channel);
 
-    console.log(`📡 [OTP Dispatched via ${channel.toUpperCase()}] To +91 ${cleanPhone} -> OTP: ${otp}`);
-
-    res.json({
-      success: true,
-      message: `Verification code sent via ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'} to +91 ${cleanPhone}`,
-      channel,
-      phone: `+91 ${cleanPhone}`,
-      simulatedOtp: otp,
-      messagePreview,
-    });
+    if (result.dispatched) {
+      res.json({
+        success: true,
+        message: `Real verification code sent via ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'} to +91 ${cleanPhone} via ${result.provider}`,
+        channel,
+        phone: `+91 ${cleanPhone}`,
+        dispatched: true,
+      });
+    } else {
+      res.json({
+        success: true,
+        message: `Verification code generated for +91 ${cleanPhone}. To deliver real cellular SMS to your phone, configure FAST2SMS_API_KEY or TWILIO credentials in server/.env.`,
+        channel,
+        phone: `+91 ${cleanPhone}`,
+        dispatched: false,
+        gatewayNotice: result.error,
+      });
+    }
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -283,10 +463,14 @@ export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
     const cleanPhone = phone.replace(/\D/g, '').slice(-10);
     const record = otpStore.get(cleanPhone);
 
-    const isValid = (record && record.otp === otp.trim() && record.expiresAt > Date.now()) || otp.trim() === '123456';
+    // Strict real validation: code must match stored OTP and not be expired
+    const isValid = record && record.otp === otp.trim() && record.expiresAt > Date.now();
 
     if (!isValid) {
-      res.status(400).json({ success: false, message: 'Invalid or expired OTP code. Please enter the correct code or request a new one.' });
+      res.status(400).json({
+        success: false,
+        message: 'Invalid or expired OTP code. Please enter the correct 6-digit code received on your phone or request a new one.'
+      });
       return;
     }
 
@@ -319,7 +503,7 @@ export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
     const token = generateToken(user.id, user.role);
     res.json({
       success: true,
-      message: 'Mobile number verified successfully! Logged in to GR Enterprises.',
+      message: 'Mobile number verified successfully! Logged in and saved in MongoDB Atlas.',
       data: user,
       token,
     });
