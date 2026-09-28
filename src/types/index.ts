@@ -78,7 +78,7 @@ export interface User {
   businessProfile?: B2BApplicationDetails;
   savedAddresses?: Address[];
   joinedDate?: string;
-  authProvider?: 'google' | 'email' | 'guest';
+  authProvider?: 'google' | 'email' | 'guest' | 'phone';
 }
 
 export interface PriceTier {

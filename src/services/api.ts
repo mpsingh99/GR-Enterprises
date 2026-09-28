@@ -104,6 +104,37 @@ export const apiGoogleSync = async (data: {
   });
 };
 
+export interface SendOtpResponse {
+  success: boolean;
+  message: string;
+  channel: 'sms' | 'whatsapp';
+  phone: string;
+  simulatedOtp?: string;
+  messagePreview?: string;
+}
+
+export const apiSendOtp = async (
+  phone: string,
+  channel: 'sms' | 'whatsapp' = 'sms'
+): Promise<SendOtpResponse | null> => {
+  return request<SendOtpResponse>('/auth/send-otp', {
+    method: 'POST',
+    body: JSON.stringify({ phone, channel }),
+  });
+};
+
+export const apiVerifyOtp = async (data: {
+  phone: string;
+  otp: string;
+  name?: string;
+  address?: any;
+}): Promise<User | null> => {
+  return request<User>('/auth/verify-otp', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+};
+
 export const apiLogin = async (email: string, password?: string): Promise<User | null> => {
   return request<User>('/auth/login', {
     method: 'POST',

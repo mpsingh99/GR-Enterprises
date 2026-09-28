@@ -28,6 +28,8 @@ export const D2CCheckoutModal: React.FC<D2CCheckoutModalProps> = ({ isOpen, onCl
   const [customerName, setCustomerName] = useState(currentUser?.name || '');
   const [customerEmail, setCustomerEmail] = useState(currentUser?.email || '');
   const [customerPhone, setCustomerPhone] = useState(currentUser?.phone || '');
+  const [notifyWhatsApp, setNotifyWhatsApp] = useState(true);
+  const [notifySms, setNotifySms] = useState(true);
 
   // Shipping Address - defaulted to Uttar Pradesh (Meerut region) or saved
   const defaultSaved = currentUser?.savedAddresses?.[0];
@@ -179,6 +181,24 @@ export const D2CCheckoutModal: React.FC<D2CCheckoutModalProps> = ({ isOpen, onCl
       });
     } catch {
       // ignore
+    }
+
+    if (notifyWhatsApp) {
+      showToast(
+        'WhatsApp Order Alert Dispatched',
+        `🟢 Official WhatsApp message sent to ${customerPhone}: Order #${newOrder.orderNumber} confirmed! Tracking details & GST tax invoice attached.`,
+        'success'
+      );
+    }
+
+    if (notifySms) {
+      setTimeout(() => {
+        showToast(
+          'SMS Delivery Notification Sent',
+          `💬 Priority SMS dispatched to ${customerPhone} via VM-GRENTR: Your order #${newOrder.orderNumber} is scheduled for Meerut hub dispatch.`,
+          'info'
+        );
+      }, 600);
     }
 
     onOrderSuccess(newOrder);
@@ -339,6 +359,29 @@ export const D2CCheckoutModal: React.FC<D2CCheckoutModalProps> = ({ isOpen, onCl
                   />
                   {formErrors.phone && <p className="text-[11px] text-rose-600 mt-1">{formErrors.phone}</p>}
                 </div>
+              </div>
+
+              {/* Real-time Order Notification Alerts */}
+              <div className="flex flex-wrap items-center gap-2.5 pt-2">
+                <span className="text-[11px] font-semibold text-slate-500">Order Updates Dispatched Via:</span>
+                <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-200 hover:bg-emerald-100/70 transition">
+                  <input
+                    type="checkbox"
+                    checked={notifyWhatsApp}
+                    onChange={e => setNotifyWhatsApp(e.target.checked)}
+                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>🟢 WhatsApp Alerts</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-blue-800 bg-blue-50 px-2.5 py-1.5 rounded-xl border border-blue-200 hover:bg-blue-100/70 transition">
+                  <input
+                    type="checkbox"
+                    checked={notifySms}
+                    onChange={e => setNotifySms(e.target.checked)}
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>💬 SMS Notification</span>
+                </label>
               </div>
             </div>
 

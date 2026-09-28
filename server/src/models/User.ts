@@ -49,7 +49,7 @@ export interface IUser extends Document {
   businessProfile?: IB2BApplicationDetails;
   savedAddresses?: IAddress[];
   joinedDate?: string;
-  authProvider?: 'google' | 'email' | 'guest';
+  authProvider?: 'google' | 'email' | 'guest' | 'phone';
   comparePassword(candidate: string): Promise<boolean>;
 }
 
@@ -117,7 +117,7 @@ const UserSchema = new Schema<IUser>(
     businessProfile: { type: B2BProfileSchema },
     savedAddresses: [AddressSchema],
     joinedDate: { type: String, default: () => new Date().toISOString().split('T')[0] },
-    authProvider: { type: String, enum: ['google', 'email', 'guest'], default: 'email' },
+    authProvider: { type: String, enum: ['google', 'email', 'guest', 'phone'], default: 'email' },
   },
   {
     timestamps: true,
