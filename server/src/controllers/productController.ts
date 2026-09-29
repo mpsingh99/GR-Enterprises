@@ -28,8 +28,8 @@ export const getProducts = async (req: Request, res: Response): Promise<void> =>
 
 export const getProductById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
-    const product = await ProductModel.findOne({ $or: [{ id }, { sku: id.toUpperCase() }] });
+    const idParam = String(req.params.id);
+    const product = await ProductModel.findOne({ $or: [{ id: idParam }, { sku: idParam.toUpperCase() }] });
 
     if (!product) {
       res.status(404).json({ success: false, message: 'Product not found' });

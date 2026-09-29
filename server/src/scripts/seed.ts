@@ -346,7 +346,7 @@ const INITIAL_PRODUCTS = [
   },
 ];
 
-const INITIAL_USERS = [
+const INITIAL_USERS: any[] = [
   {
     id: 'user-admin',
     name: 'Gaurav Rawat (Store Owner & Admin)',

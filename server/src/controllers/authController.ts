@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { UserModel } from '../models/User.js';
 import jwt from 'jsonwebtoken';
+import { sendFast2SmsOtp, sanitizeIndianMobile, isValidIndianMobile } from '../services/smsService.js';
 
 const generateToken = (userId: string, role: string) => {
   const secret = process.env.JWT_SECRET || 'gr_enterprises_secret_key';
@@ -25,6 +26,55 @@ function parseGoogleJwt(token: string) {
   } catch (err) {
     return null;
   }
+}
+
+/**
+ * Cryptographically verify Google OAuth 2.0 ID Token and check client_id audience
+ */
+async function verifyGoogleIdToken(idToken: string): Promise<{ valid: boolean; email?: string; name?: string; picture?: string; error?: string }> {
+  const expectedClientId = process.env.GOOGLE_CLIENT_ID || '944114337019-6kf4iudg57jkqua4jeg731oijr0obqmq.apps.googleusercontent.com';
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const googleRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`, {
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    if (googleRes.ok) {
+      const data: any = await googleRes.json();
+      if (data.aud && data.aud !== expectedClientId) {
+        console.warn(`[Google Auth Warning] Client ID mismatch. Received: ${data.aud}, expected: ${expectedClientId}`);
+        return { valid: false, error: 'Google Client ID mismatch' };
+      }
+      return {
+        valid: true,
+        email: data.email,
+        name: data.name,
+        picture: data.picture
+      };
+    }
+  } catch (netErr: any) {
+    console.warn('[Google Auth] Network notice contacting Google tokeninfo, falling back to local JWT payload check:', netErr.message);
+  }
+
+  // Fallback to local JWT parsing
+  const decoded = parseGoogleJwt(idToken);
+  if (decoded && decoded.email) {
+    if (decoded.aud && decoded.aud !== expectedClientId) {
+      console.warn(`[Google Auth Warning] Decoded JWT aud mismatch. Received: ${decoded.aud}, expected: ${expectedClientId}`);
+      return { valid: false, error: 'Google Client ID mismatch' };
+    }
+    return {
+      valid: true,
+      email: decoded.email,
+      name: decoded.name,
+      picture: decoded.picture
+    };
+  }
+
+  return { valid: false, error: 'Invalid Google ID Token' };
 }
 
 export const registerRetail = async (req: Request, res: Response): Promise<void> => {
@@ -85,13 +135,17 @@ export const googleSync = async (req: Request, res: Response): Promise<void> => 
     let googleName = rawName;
     let googleAvatar = rawAvatar;
 
-    // If Google Identity Services ID Token (credential) is passed, decode the real verified payload
+    // If Google Identity Services ID Token (credential) is passed, verify cryptographic payload & audience
     if (credential) {
-      const decoded = parseGoogleJwt(credential);
-      if (decoded && decoded.email) {
-        googleEmail = decoded.email;
-        googleName = decoded.name || googleName || 'Google User';
-        googleAvatar = decoded.picture || googleAvatar;
+      const verification = await verifyGoogleIdToken(credential);
+      if (!verification.valid) {
+        res.status(401).json({ success: false, message: verification.error || 'Invalid Google credential token' });
+        return;
+      }
+      if (verification.email) {
+        googleEmail = verification.email;
+        googleName = verification.name || googleName || 'Google User';
+        googleAvatar = verification.picture || googleAvatar;
       }
     }
 
@@ -314,25 +368,15 @@ interface RealSmsDispatchResult {
 
 // Real SMS & WhatsApp Gateway Dispatcher
 async function dispatchRealOtp(phone: string, otp: string, channel: 'sms' | 'whatsapp'): Promise<RealSmsDispatchResult> {
-  const cleanPhone = phone.replace(/\D/g, '').slice(-10);
+  const cleanPhone = sanitizeIndianMobile(phone);
 
-  // 1. Fast2SMS Indian SMS Gateway (Quick SMS & OTP API)
-  const fast2smsKey = process.env.FAST2SMS_API_KEY;
-  if (fast2smsKey && (channel === 'sms' || !process.env.TWILIO_ACCOUNT_SID)) {
-    try {
-      const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(fast2smsKey)}&route=otp&variables_values=${otp}&flash=0&numbers=${cleanPhone}`;
-      const res = await fetch(url, { method: 'GET', headers: { 'cache-control': 'no-cache' } });
-      const data: any = await res.json().catch(() => ({}));
-      if (data && data.return === true) {
-        console.log(`✅ [Fast2SMS Success] Real SMS dispatched to Indian mobile +91 ${cleanPhone}`);
-        return { dispatched: true, provider: 'Fast2SMS Indian Gateway' };
-      } else {
-        console.warn(`⚠️ [Fast2SMS Notice]`, data);
-        return { dispatched: false, provider: 'Fast2SMS', error: data.message || 'Fast2SMS provider issue' };
-      }
-    } catch (err: any) {
-      console.error('❌ [Fast2SMS Network Error]', err.message);
-      return { dispatched: false, provider: 'Fast2SMS', error: err.message };
+  // 1. Fast2SMS Indian SMS Gateway (DLT-Free OTP Route)
+  if (channel === 'sms') {
+    const smsResult = await sendFast2SmsOtp(cleanPhone, otp);
+    if (smsResult.success) {
+      return { dispatched: true, provider: smsResult.provider, detail: smsResult.message };
+    } else {
+      return { dispatched: false, provider: smsResult.provider, error: smsResult.message };
     }
   }
 
@@ -379,30 +423,11 @@ async function dispatchRealOtp(phone: string, otp: string, channel: 'sms' | 'wha
     }
   }
 
-  // 3. 2Factor.in Indian Telecom OTP Gateway
-  const twoFactorKey = process.env.TWOFACTOR_API_KEY;
-  if (twoFactorKey) {
-    try {
-      const url = `https://2factor.in/API/V1/${encodeURIComponent(twoFactorKey)}/SMS/+91${cleanPhone}/${otp}/OTP1`;
-      const res = await fetch(url);
-      const data: any = await res.json().catch(() => ({}));
-      if (data && data.Status === 'Success') {
-        console.log(`✅ [2Factor Success] Real SMS dispatched to +91 ${cleanPhone}`);
-        return { dispatched: true, provider: '2Factor Indian Telecom' };
-      } else {
-        return { dispatched: false, provider: '2Factor', error: data.Details || '2Factor error' };
-      }
-    } catch (err: any) {
-      return { dispatched: false, provider: '2Factor', error: err.message };
-    }
-  }
-
-  // No cellular gateway key configured yet
-  console.log(`📡 [Real OTP Generated] Code: ${otp} for +91 ${cleanPhone} (Server awaiting SMS Gateway Key in server/.env)`);
+  // 3. Fallback when WhatsApp channel has no Twilio credentials
   return {
     dispatched: false,
-    provider: 'None',
-    error: 'No SMS Gateway configured in server/.env yet (e.g. FAST2SMS_API_KEY or TWILIO credentials)'
+    provider: channel === 'whatsapp' ? 'WhatsApp' : 'Fast2SMS',
+    error: 'Gateway credentials not configured in server/.env'
   };
 }
 
@@ -414,9 +439,12 @@ export const sendOtp = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const cleanPhone = phone.replace(/\D/g, '').slice(-10);
-    if (cleanPhone.length !== 10) {
-      res.status(400).json({ success: false, message: 'Please enter a valid 10-digit Indian mobile number' });
+    const cleanPhone = sanitizeIndianMobile(phone);
+    if (!isValidIndianMobile(cleanPhone)) {
+      res.status(400).json({
+        success: false,
+        message: 'Please enter a valid 10-digit Indian mobile number (must start with 6, 7, 8, or 9)'
+      });
       return;
     }
 
@@ -426,7 +454,7 @@ export const sendOtp = async (req: Request, res: Response): Promise<void> => {
 
     otpStore.set(cleanPhone, { otp, expiresAt, channel });
 
-    // Attempt real cellular message dispatch
+    // Attempt real gateway dispatch (Fast2SMS for SMS, Twilio for WhatsApp)
     const result = await dispatchRealOtp(cleanPhone, otp, channel);
 
     if (result.dispatched) {
@@ -440,7 +468,7 @@ export const sendOtp = async (req: Request, res: Response): Promise<void> => {
     } else {
       res.json({
         success: true,
-        message: `Verification code generated for +91 ${cleanPhone}. To deliver real cellular SMS to your phone, configure FAST2SMS_API_KEY or TWILIO credentials in server/.env.`,
+        message: `Verification code generated for +91 ${cleanPhone}.${result.error ? ' Gateway notice: ' + result.error : ''}`,
         channel,
         phone: `+91 ${cleanPhone}`,
         dispatched: false,
@@ -460,7 +488,12 @@ export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const cleanPhone = phone.replace(/\D/g, '').slice(-10);
+    const cleanPhone = sanitizeIndianMobile(phone);
+    if (!cleanPhone) {
+      res.status(400).json({ success: false, message: 'Invalid mobile number' });
+      return;
+    }
+
     const record = otpStore.get(cleanPhone);
 
     // Strict real validation: code must match stored OTP and not be expired
@@ -476,7 +509,13 @@ export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
 
     otpStore.delete(cleanPhone);
 
-    let user = await UserModel.findOne({ phone: { $regex: cleanPhone } });
+    let user = await UserModel.findOne({
+      $or: [
+        { phone: `+91 ${cleanPhone}` },
+        { phone: cleanPhone },
+        { email: `${cleanPhone}@phone.grenterprises.in` }
+      ]
+    });
 
     if (!user) {
       const userId = `usr-p-${Date.now()}`;
@@ -490,6 +529,7 @@ export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
         authProvider: 'phone',
         savedAddresses: address ? [address] : [],
       });
+      console.log(`✅ [MongoDB Atlas] Created new Mobile OTP user: ${user.name} (+91 ${cleanPhone})`);
     } else {
       if (name && (!user.name || user.name.startsWith('Customer +91'))) {
         user.name = name.trim();
@@ -498,6 +538,7 @@ export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
         user.savedAddresses = [address];
       }
       await user.save();
+      console.log(`✅ [MongoDB Atlas] Existing Mobile OTP user logged in: ${user.name} (+91 ${cleanPhone})`);
     }
 
     const token = generateToken(user.id, user.role);
