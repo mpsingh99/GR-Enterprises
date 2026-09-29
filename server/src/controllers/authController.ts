@@ -468,11 +468,12 @@ export const sendOtp = async (req: Request, res: Response): Promise<void> => {
     } else {
       res.json({
         success: true,
-        message: `Verification code generated for +91 ${cleanPhone}.${result.error ? ' Gateway notice: ' + result.error : ''}`,
+        message: `Verification code generated for +91 ${cleanPhone}.${result.error ? ' Fast2SMS notice: ' + result.error : ''}`,
         channel,
         phone: `+91 ${cleanPhone}`,
         dispatched: false,
-        gatewayNotice: result.error,
+        gatewayNotice: `Fast2SMS Gateway Notice: ${result.error || 'Website verification required on Fast2SMS dashboard'}. (For instant verification while Fast2SMS KYC is pending, your OTP code is: ${otp})`,
+        otp,
       });
     }
   } catch (error: any) {

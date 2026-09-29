@@ -118,10 +118,34 @@ export const apiSendOtp = async (
   phone: string,
   channel: 'sms' | 'whatsapp' = 'sms'
 ): Promise<SendOtpResponse | null> => {
-  return request<SendOtpResponse>('/auth/send-otp', {
-    method: 'POST',
-    body: JSON.stringify({ phone, channel }),
-  });
+  try {
+    const res = await fetch(`${API_BASE}/auth/send-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, channel }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const isVercel404 = res.status === 404 && typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+      return {
+        success: false,
+        message: isVercel404
+          ? 'Backend is active locally. Please open http://localhost:5173 to test with the live MongoDB Atlas & Fast2SMS backend.'
+          : (data.message || `Server returned status ${res.status}`),
+        channel,
+        phone
+      };
+    }
+    return data;
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err.message || 'Network error reaching server',
+      channel,
+      phone
+    };
+  }
 };
 
 export const apiVerifyOtp = async (data: {

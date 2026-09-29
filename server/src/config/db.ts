@@ -6,11 +6,16 @@ dotenv.config();
 let isConnected = false;
 
 export const connectDB = async (): Promise<boolean> => {
-  const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/gr_enterprises';
+  if (mongoose.connection.readyState === 1) {
+    isConnected = true;
+    return true;
+  }
+
+  const uri = process.env.MONGODB_URI || 'mongodb+srv://singhmp120599_db_user:aW8W6xXVphkiAE47@cluster0.i97cms3.mongodb.net/gr_enterprises?retryWrites=true&w=majority&appName=Cluster0';
 
   try {
     const conn = await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 8000,
     });
 
     isConnected = true;
