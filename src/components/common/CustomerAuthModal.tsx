@@ -75,7 +75,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   // ================= 2. REAL GOOGLE OAUTH 2.0 STATE =================
   const googleBtnContainerRef = useRef<HTMLDivElement | null>(null);
   const [googleClientId, setGoogleClientId] = useState<string>(() => {
-    return (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || localStorage.getItem('gre_google_client_id') || '';
+    return (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || localStorage.getItem('gre_google_client_id') || '944114337019-6kf4iudg57jkqua4jeg731oijr0obqmq.apps.googleusercontent.com';
   });
   const [showGoogleConfig, setShowGoogleConfig] = useState<boolean>(false);
   const [isGoogleGsiLoaded, setIsGoogleGsiLoaded] = useState<boolean>(false);
