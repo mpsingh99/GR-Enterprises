@@ -46,8 +46,8 @@ app.get('/api/health', (_req, res) => {
       name: dbStatus.database,
       readyState: dbStatus.readyState === 1 ? 'Connected (Ready)' : 'Disconnected / Connecting',
     },
-    version: '1.0.2',
-    release: 'mongodb-otp-responsive',
+    version: '1.0.3',
+    release: 'lead-capture-responsive-cancel',
     deployment: 'Vercel Serverless Function'
   });
 });

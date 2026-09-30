@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Address } from '../../types';
+import { apiCaptureLead } from '../../services/api';
 import {
   X,
   Phone,
@@ -53,6 +54,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     loginUser,
     sendPhoneOtp,
     loginWithPhoneOtp,
+    completeLogin,
     updateCustomerProfile,
     showToast 
   } = useApp();
@@ -208,6 +210,32 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     showToast('Google Client ID Saved', 'Google OAuth 2.0 Web Client configured successfully.', 'success');
   };
 
+  // Instantly push mobile number & email to MongoDB Atlas as soon as provided in Section 1
+  const handleInstantContactCapture = async (phoneToCapture: string, emailToCapture?: string) => {
+    const cleanDigits = phoneToCapture.replace(/\D/g, '');
+    const cleanEmail = emailToCapture && emailToCapture.includes('@') ? emailToCapture.trim().toLowerCase() : undefined;
+    if (cleanDigits.length === 10 || cleanEmail) {
+      try {
+        await apiCaptureLead({
+          phone: cleanDigits.length === 10 ? cleanDigits : undefined,
+          email: cleanEmail,
+        });
+      } catch (e) {
+        // Non-blocking background lead capture
+      }
+    }
+  };
+
+  const handleCloseModal = () => {
+    // If the user closes or cancels without submitting details, reset transient state so they are not logged in
+    setOtpStep('phone');
+    setVerifiedCustomer(null);
+    setIsOtpSent(false);
+    setOtpDigits(['', '', '', '', '', '']);
+    setErrorMsg('');
+    onClose();
+  };
+
   // ================= HANDLER: REAL MOBILE OTP DISPATCH =================
   const handleSendOtp = async () => {
     setErrorMsg('');
@@ -221,7 +249,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     setGatewayNotice('');
 
     try {
-      const res = await sendPhoneOtp(cleanPhoneDigits, msgChannel);
+      // Send OTP and push mobile & email to MongoDB Atlas immediately (whether OTP received or not)
+      const res = await sendPhoneOtp(cleanPhoneDigits, msgChannel, email.trim() || undefined);
       if (res.success) {
         setIsOtpSent(true);
         setDispatchStatusMsg(res.message);
@@ -296,9 +325,16 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
     try {
       const cleanPhoneDigits = msgPhone.replace(/\D/g, '');
+      // Pass autoSetCurrentUser: false so verifying code does NOT prematurely log the user into the system!
       const user = await loginWithPhoneOtp(
         cleanPhoneDigits,
-        code
+        code,
+        undefined,
+        email.trim() || undefined,
+        undefined,
+        undefined,
+        undefined,
+        false
       );
 
       setIsVerifyingOtp(false);
@@ -306,7 +342,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         setVerifiedCustomer(user);
 
         // Check if customer profile needs completion
-        const isDefaultName = !user.name || user.name.startsWith('Customer +91');
+        const isDefaultName = !user.name || user.name.startsWith('Customer +91') || user.name === 'Prospective Customer';
         const isDefaultEmail = !user.email || user.email.includes('@phone.grenterprises.in');
         const isAddressMissing = !user.savedAddresses || user.savedAddresses.length === 0 || !user.savedAddresses[0]?.street || user.savedAddresses[0]?.street === 'Central City Area';
         const isIncomplete = isDefaultName || isDefaultEmail || !user.age || isAddressMissing;
@@ -325,9 +361,12 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
             if (addr.postalCode) setPostalCode(addr.postalCode);
           }
           setOtpStep('profile');
-          showToast('Phone Number Verified', 'Please enter your customer profile details to finish registration.', 'info');
+          showToast('Phone Number Verified', 'Please complete your customer details to finish registration.', 'info');
         } else {
-          onClose();
+          // Existing user with complete profile signing in
+          completeLogin(user);
+          showToast('Logged In Successfully', `Welcome back, ${user.name}!`, 'success');
+          handleCloseModal();
           if (onSuccess) onSuccess();
         }
       } else {
@@ -394,7 +433,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
       setIsSavingProfile(false);
       if (updated) {
-        onClose();
+        handleCloseModal();
         if (onSuccess) onSuccess();
       }
     } catch (err: any) {
@@ -506,8 +545,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden relative my-6 max-h-[95vh] flex flex-col">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-6 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget) handleCloseModal(); }}>
+      <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden relative my-auto max-h-[96vh] flex flex-col box-border">
         
         {/* Header */}
         <div className="p-4 sm:p-6 border-b border-slate-200 bg-white shrink-0">
@@ -527,7 +566,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
             </div>
 
             <button
-              onClick={onClose}
+              onClick={handleCloseModal}
               className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
               title="Close"
             >
@@ -815,6 +854,15 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     )}
                   </button>
 
+                  {/* Cancel / Exit without logging in */}
+                  <button
+                    type="button"
+                    onClick={handleCloseModal}
+                    className="w-full py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 font-semibold text-xs transition text-center"
+                  >
+                    Cancel & Exit (Do not log in)
+                  </button>
+
                   <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Customer details saved directly in MongoDB Atlas database</span>
@@ -879,13 +927,15 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Mobile Phone Number Input */}
-                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                      Enter Your 10-Digit Mobile Number
-                    </label>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <div className="flex flex-1 gap-2 min-w-0">
+                  {/* Section 1: Mobile & Email Contact Inputs */}
+                  <div className="bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-200 space-y-3 w-full box-border overflow-hidden">
+                    
+                    {/* Mobile Phone Number */}
+                    <div className="space-y-1.5 w-full">
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                        10-Digit Mobile Number *
+                      </label>
+                      <div className="flex gap-2 w-full min-w-0">
                         <div className="flex items-center gap-1.5 px-3 py-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-700 text-xs shadow-xs shrink-0">
                           <span>🇮🇳</span>
                           <span>+91</span>
@@ -894,34 +944,66 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                           type="tel"
                           maxLength={10}
                           value={msgPhone}
-                          onChange={e => setMsgPhone(e.target.value.replace(/\D/g, ''))}
+                          onChange={e => {
+                            const val = e.target.value.replace(/\D/g, '');
+                            setMsgPhone(val);
+                            if (val.length === 10) {
+                              handleInstantContactCapture(val, email);
+                            }
+                          }}
                           placeholder="Enter 10-digit number"
-                          className="flex-1 min-w-0 px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 shadow-xs tracking-wider"
+                          className="flex-1 min-w-0 w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 shadow-xs tracking-wider"
                         />
                       </div>
-                      <button
-                        type="button"
-                        disabled={isSendingOtp || msgPhone.length < 10}
-                        onClick={handleSendOtp}
-                        className="w-full sm:w-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-sm shrink-0"
-                      >
-                        {isSendingOtp ? (
-                          <span>Sending...</span>
-                        ) : isOtpSent ? (
-                          <>
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            <span>Resend Code</span>
-                          </>
-                        ) : (
-                          <>
-                            <span>Send Code</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </>
-                        )}
-                      </button>
                     </div>
-                    <p className="text-[11px] text-slate-500">
-                      Verification code will be dispatched to your phone via {msgChannel === 'whatsapp' ? 'WhatsApp' : 'cellular SMS'}.
+
+                    {/* Email Address Input (Section 1 instant lead capture) */}
+                    <div className="space-y-1.5 w-full">
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                        <span>Email Address</span>
+                        <span className="text-[10px] text-slate-400 font-normal lowercase">(optional for OTP)</span>
+                      </label>
+                      <div className="relative w-full">
+                        <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={e => setEmail(e.target.value)}
+                          onBlur={() => {
+                            if (msgPhone.length === 10 || (email && email.includes('@'))) {
+                              handleInstantContactCapture(msgPhone, email);
+                            }
+                          }}
+                          placeholder="e.g. name@example.com"
+                          className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:ring-2 focus:ring-emerald-500 shadow-xs box-border"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Send / Resend Code Button - Dedicated Full Width Row */}
+                    <button
+                      type="button"
+                      disabled={isSendingOtp || msgPhone.length < 10}
+                      onClick={handleSendOtp}
+                      className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs sm:text-sm transition flex items-center justify-center gap-2 shadow-sm shrink-0"
+                    >
+                      {isSendingOtp ? (
+                        <span>Sending Code & Saving to Database...</span>
+                      ) : isOtpSent ? (
+                        <>
+                          <RotateCcw className="w-4 h-4" />
+                          <span>Resend Verification Code</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Send Verification Code</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+
+                    <p className="text-[10px] sm:text-[11px] text-slate-500 text-center pt-0.5">
+                      Verification code will be dispatched to your phone via {msgChannel === 'whatsapp' ? 'WhatsApp' : 'cellular SMS'}. Contact details are auto-saved to database.
                     </p>
                   </div>
 

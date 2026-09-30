@@ -116,13 +116,14 @@ export interface SendOtpResponse {
 
 export const apiSendOtp = async (
   phone: string,
-  channel: 'sms' | 'whatsapp' = 'sms'
+  channel: 'sms' | 'whatsapp' = 'sms',
+  email?: string
 ): Promise<SendOtpResponse | null> => {
   try {
     const res = await fetch(`${API_BASE}/auth/send-otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, channel }),
+      body: JSON.stringify({ phone, channel, email }),
     });
 
     const data = await res.json().catch(() => ({}));
@@ -146,6 +147,13 @@ export const apiSendOtp = async (
       phone
     };
   }
+};
+
+export const apiCaptureLead = async (data: { phone?: string; email?: string }): Promise<User | null> => {
+  return request<User>('/auth/capture-lead', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 };
 
 export const apiVerifyOtp = async (data: {

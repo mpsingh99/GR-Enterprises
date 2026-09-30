@@ -9,6 +9,7 @@ import {
   sendOtp,
   verifyOtp,
   updateProfile,
+  captureLead,
 } from '../controllers/authController.js';
 
 const router = Router();
@@ -20,6 +21,7 @@ router.post('/b2b-register', registerB2B);
 router.post('/send-otp', sendOtp);
 router.post('/verify-otp', verifyOtp);
 router.post('/update-profile', updateProfile);
+router.post('/capture-lead', captureLead);
 router.get('/users', getAllUsers);
 router.patch('/users/:id/role', updateUserRole);
 

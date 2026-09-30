@@ -151,7 +151,7 @@ interface AppContextType {
   setIsGoogleAuthModalOpen: (open: boolean) => void;
 
   // Mobile OTP & WhatsApp Message Authenticator
-  sendPhoneOtp: (phone: string, channel?: 'sms' | 'whatsapp') => Promise<{
+  sendPhoneOtp: (phone: string, channel?: 'sms' | 'whatsapp', email?: string) => Promise<{
     success: boolean;
     message: string;
     dispatched?: boolean;
@@ -164,8 +164,10 @@ interface AppContextType {
     email?: string,
     age?: number,
     gender?: string,
-    address?: Address
+    address?: Address,
+    autoSetCurrentUser?: boolean
   ) => Promise<User | null>;
+  completeLogin: (user: User) => void;
   updateCustomerProfile: (profileData: {
     userId: string;
     name: string;
@@ -604,7 +606,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Real Mobile OTP & WhatsApp Message Authenticator implementations
   const sendPhoneOtp = async (
     phone: string,
-    channel: 'sms' | 'whatsapp' = 'sms'
+    channel: 'sms' | 'whatsapp' = 'sms',
+    email?: string
   ): Promise<{ success: boolean; message: string; dispatched?: boolean; gatewayNotice?: string }> => {
     const cleanPhone = phone.replace(/\D/g, '').slice(-10);
     if (cleanPhone.length !== 10) {
@@ -615,7 +618,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      const res = await apiSendOtp(cleanPhone, channel);
+      const res = await apiSendOtp(cleanPhone, channel, email);
       if (res && res.success) {
         return {
           success: true,
@@ -636,6 +639,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const completeLogin = (user: User) => {
+    setCurrentUser(user);
+    setModeState('D2C');
+    setUsers(prev => [user, ...prev.filter(u => u.id !== user.id)]);
+
+    // Link guest orders
+    if (guestOrderIds.length > 0) {
+      setOrders(prev => prev.map(o => {
+        if (guestOrderIds.includes(o.id)) {
+          return {
+            ...o,
+            customerId: user.id,
+            customerName: user.name,
+            customerEmail: user.email,
+            customerPhone: user.phone || o.customerPhone,
+            isGuest: false
+          };
+        }
+        return o;
+      }));
+    }
+  };
+
   const loginWithPhoneOtp = async (
     phone: string,
     otp: string,
@@ -643,7 +669,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     email?: string,
     age?: number,
     gender?: string,
-    address?: Address
+    address?: Address,
+    autoSetCurrentUser: boolean = true
   ): Promise<User | null> => {
     const cleanPhone = phone.replace(/\D/g, '').slice(-10);
     if (!cleanPhone || !otp) return null;
@@ -664,32 +691,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return null;
       }
 
-      setCurrentUser(backendUser);
-      setModeState('D2C');
-      setUsers(prev => [backendUser, ...prev.filter(u => u.id !== backendUser.id)]);
-
-      // Link guest orders
-      if (guestOrderIds.length > 0) {
-        setOrders(prev => prev.map(o => {
-          if (guestOrderIds.includes(o.id)) {
-            return {
-              ...o,
-              customerId: backendUser.id,
-              customerName: backendUser.name,
-              customerEmail: backendUser.email,
-              customerPhone: backendUser.phone || o.customerPhone,
-              isGuest: false
-            };
-          }
-          return o;
-        }));
+      if (autoSetCurrentUser) {
+        completeLogin(backendUser);
+        showToast(
+          'Mobile Number Verified',
+          `Welcome to GR Enterprises, ${backendUser.name}! Account verified and saved in MongoDB Atlas.`,
+          'success'
+        );
       }
-
-      showToast(
-        'Mobile Number Verified',
-        `Welcome to GR Enterprises, ${backendUser.name}! Account verified and saved in MongoDB Atlas.`,
-        'success'
-      );
 
       return backendUser;
     } catch (err: any) {
@@ -710,8 +719,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const updatedUser = await apiUpdateProfile(profileData);
       if (updatedUser) {
-        setCurrentUser(updatedUser);
-        setUsers(prev => [updatedUser, ...prev.filter(u => u.id !== updatedUser.id)]);
+        completeLogin(updatedUser);
         showToast('Profile Details Saved', `Welcome, ${updatedUser.name}! Your details and delivery address are saved in MongoDB Atlas.`, 'success');
         return updatedUser;
       }
@@ -1128,6 +1136,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         loginUser,
         sendPhoneOtp,
         loginWithPhoneOtp,
+        completeLogin,
         updateCustomerProfile,
         isGoogleAuthModalOpen,
         setIsGoogleAuthModalOpen,

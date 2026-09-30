@@ -434,7 +434,7 @@ async function dispatchRealOtp(phone: string, otp: string, channel: 'sms' | 'wha
 
 export const sendOtp = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { phone, channel = 'sms' } = req.body;
+    const { phone, channel = 'sms', email } = req.body;
     if (!phone) {
       res.status(400).json({ success: false, message: 'Phone number is required' });
       return;
@@ -447,6 +447,43 @@ export const sendOtp = async (req: Request, res: Response): Promise<void> => {
         message: 'Please enter a valid 10-digit Indian mobile number (must start with 6, 7, 8, or 9)'
       });
       return;
+    }
+
+    const cleanEmail = email && typeof email === 'string' && email.includes('@') 
+      ? email.trim().toLowerCase() 
+      : undefined;
+
+    // IMMEDIATE DATA PERSISTENCE: Save/record the mobile number and email in MongoDB Atlas immediately
+    // (whether OTP is received or not, ensuring no lead/customer contact is lost)
+    try {
+      let leadUser = await UserModel.findOne({
+        $or: [
+          { phone: `+91 ${cleanPhone}` },
+          { phone: cleanPhone },
+          ...(cleanEmail ? [{ email: cleanEmail }] : [])
+        ]
+      });
+
+      if (!leadUser) {
+        await UserModel.create({
+          id: `usr-lead-${Date.now()}`,
+          name: `Customer +91 ${cleanPhone}`,
+          phone: `+91 ${cleanPhone}`,
+          email: cleanEmail || `${cleanPhone}@phone.grenterprises.in`,
+          role: 'd2c_customer',
+          authProvider: 'phone',
+          savedAddresses: [],
+        });
+        console.log(`✅ [MongoDB Atlas Lead Captured on OTP Request] +91 ${cleanPhone} (${cleanEmail || 'no email'})`);
+      } else {
+        if (!leadUser.phone) leadUser.phone = `+91 ${cleanPhone}`;
+        if (cleanEmail && (!leadUser.email || leadUser.email.includes('@phone.grenterprises.in'))) {
+          leadUser.email = cleanEmail;
+        }
+        await leadUser.save();
+      }
+    } catch (saveErr: any) {
+      console.warn('⚠️ [MongoDB Atlas Instant Save Notice]:', saveErr.message);
     }
 
     // Generate real 6-digit secure OTP
@@ -703,3 +740,61 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
     res.status(400).json({ success: false, message: error.message });
   }
 };
+
+/**
+ * Capture Lead / Prospective Customer contact immediately as soon as phone or email is entered
+ * (Pushes directly into MongoDB Atlas before or without OTP completion)
+ */
+export const captureLead = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { phone, email } = req.body;
+    if (!phone && !email) {
+      res.status(400).json({ success: false, message: 'Phone number or email address is required' });
+      return;
+    }
+
+    const cleanPhone = phone ? sanitizeIndianMobile(phone) : '';
+    const cleanEmail = email && typeof email === 'string' && email.includes('@') 
+      ? email.trim().toLowerCase() 
+      : undefined;
+
+    let user = await UserModel.findOne({
+      $or: [
+        ...(cleanPhone ? [{ phone: `+91 ${cleanPhone}` }, { phone: cleanPhone }] : []),
+        ...(cleanEmail ? [{ email: cleanEmail }] : [])
+      ]
+    });
+
+    if (!user) {
+      const userId = `usr-lead-${Date.now()}`;
+      user = await UserModel.create({
+        id: userId,
+        name: cleanPhone ? `Customer +91 ${cleanPhone}` : (cleanEmail ? cleanEmail.split('@')[0] : 'Prospective Customer'),
+        email: cleanEmail || (cleanPhone ? `${cleanPhone}@phone.grenterprises.in` : undefined),
+        phone: cleanPhone ? `+91 ${cleanPhone}` : undefined,
+        role: 'd2c_customer',
+        authProvider: cleanPhone ? 'phone' : 'email',
+        savedAddresses: [],
+      });
+      console.log(`✅ [MongoDB Atlas Instant Lead] Saved phone=${cleanPhone || 'N/A'}, email=${cleanEmail || 'N/A'}`);
+    } else {
+      if (cleanPhone && !user.phone) {
+        user.phone = `+91 ${cleanPhone}`;
+      }
+      if (cleanEmail && (!user.email || user.email.includes('@phone.grenterprises.in'))) {
+        user.email = cleanEmail;
+      }
+      await user.save();
+      console.log(`✅ [MongoDB Atlas Lead Updated] phone=${user.phone}, email=${user.email}`);
+    }
+
+    res.json({
+      success: true,
+      message: 'Contact details captured and pushed to MongoDB database immediately',
+      data: user,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
