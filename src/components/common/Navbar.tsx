@@ -90,42 +90,26 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Logo & Storefront Tag: GR Enterprises (Meerut) */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <div className="flex items-center gap-2 sm:gap-2.5 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-              <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-black text-sm sm:text-lg text-white shadow-md transition-colors shrink-0 ${
-                mode === 'B2B' ? 'bg-gradient-to-br from-blue-700 to-indigo-950' : 'bg-gradient-to-br from-emerald-600 to-teal-800'
-              }`}>
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-black text-sm sm:text-lg text-white shadow-md transition-colors shrink-0 bg-gradient-to-br from-blue-700 to-indigo-950">
                 GR
               </div>
               <div>
                 <span className="font-black text-sm sm:text-lg tracking-tight text-slate-950 block leading-tight">
-                  GR <span className={mode === 'B2B' ? 'text-blue-700' : 'text-emerald-700'}>Enterprises</span>
+                  GR <span className="text-blue-700">Enterprises</span>
                 </span>
                 <span className="block text-[8px] sm:text-[10px] uppercase font-bold tracking-wider text-slate-500 truncate max-w-[110px] sm:max-w-none">
-                  {mode === 'B2B' ? 'Wholesale' : 'Retail'} • Meerut Hub
+                  Wholesale Portal • Meerut Hub
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Active Mode Indicator - Pure separation without dual options */}
+          {/* Active Mode Indicator - Pure B2B Wholesale Portal */}
           <div className="hidden md:flex items-center gap-2">
-            {mode === 'D2C' ? (
-              <div className="flex items-center gap-2 bg-emerald-50 text-emerald-900 border border-emerald-200/90 px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs">
-                <ShoppingBag className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Retail Direct Storefront</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 bg-blue-950 text-blue-100 border border-blue-900 px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs">
-                <Building2 className="w-3.5 h-3.5 text-blue-400" />
-                <span>B2B Wholesale Portal</span>
-              </div>
-            )}
-            <button
-              onClick={openExperienceGate}
-              title="Switch between Retail and Wholesale experience"
-              className="text-[11px] text-slate-400 hover:text-slate-800 font-medium px-2 py-1 rounded-lg hover:bg-slate-100 transition"
-            >
-              Change Store
-            </button>
+            <div className="flex items-center gap-2 bg-blue-950 text-blue-100 border border-blue-900 px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs">
+              <Building2 className="w-3.5 h-3.5 text-blue-400" />
+              <span>B2B Wholesale Procurement Portal</span>
+            </div>
           </div>
 
           {/* Search Bar - Desktop */}
@@ -135,7 +119,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={mode === 'B2B' ? "Search SKU, bulk supplies in Meerut..." : "Search items, tech, office gear..."}
+              placeholder="Search wholesale SKU, HSN, bulk supplies in Meerut..."
               className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-8 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
             />
             {searchQuery && (
@@ -219,28 +203,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                   Sign In
                 </button>
                 <button
-                  onClick={() => {
-                    if (mode === 'B2B') {
-                      setActiveModal('b2b_register');
-                    } else {
-                      openAuthModal('signup');
-                    }
-                  }}
-                  className={`hidden sm:inline-flex px-3 sm:px-3.5 py-1.5 rounded-xl text-white text-xs font-bold transition shadow-xs items-center gap-1.5 shrink-0 ${
-                    mode === 'B2B' ? 'bg-blue-900 hover:bg-blue-800' : 'bg-emerald-600 hover:bg-emerald-700'
-                  }`}
+                  onClick={() => openAuthModal('signup')}
+                  className="hidden sm:inline-flex px-3 sm:px-3.5 py-1.5 rounded-xl text-white text-xs font-bold transition shadow-xs items-center gap-1.5 shrink-0 bg-blue-900 hover:bg-blue-800"
                 >
-                  {mode === 'B2B' ? (
-                    <>
-                      <Building2 className="w-3.5 h-3.5" />
-                      <span>Register Business</span>
-                    </>
-                  ) : (
-                    <>
-                      <User className="w-3.5 h-3.5" />
-                      <span>Sign Up (Simple)</span>
-                    </>
-                  )}
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span>Register Business</span>
                 </button>
               </div>
             ) : (
@@ -340,25 +307,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <span>Order History & Invoices</span>
                       </button>
 
-                      {mode === 'B2B' && currentUser.role.startsWith('b2b') && (
-                        <button
-                          onClick={onOpenB2BStatus}
-                          className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                        >
-                          <Building2 className="w-4 h-4 text-slate-400" />
-                          <span>GR Enterprises B2B KYC Status</span>
-                        </button>
-                      )}
-
-                      {mode === 'B2B' && (currentUser.role === 'd2c_customer' || currentUser.role === 'guest') && (
-                        <button
-                          onClick={() => setActiveModal('b2b_register')}
-                          className="w-full text-left px-4 py-2 text-xs text-blue-600 hover:bg-blue-50 font-medium flex items-center gap-2"
-                        >
-                          <Sparkles className="w-4 h-4 text-blue-500" />
-                          <span>Register Business for Wholesale</span>
-                        </button>
-                      )}
+                      <button
+                        onClick={onOpenB2BStatus}
+                        className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                      >
+                        <Building2 className="w-4 h-4 text-slate-400" />
+                        <span>GR Enterprises B2B KYC Status</span>
+                      </button>
                     </div>
 
                     <div className="border-t border-slate-100 pt-1">
@@ -386,28 +341,17 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         </div>
 
-        {/* Mobile Sub-bar: Active Mode Indicator */}
+        {/* Mobile Sub-bar: Pure B2B Wholesale Portal */}
         <div className="md:hidden py-1.5 border-t border-slate-100 flex items-center justify-between gap-2">
-          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border flex-1 ${
-            mode === 'D2C' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-blue-950 text-blue-100 border-blue-900'
-          }`}>
-            {mode === 'D2C' ? (
-              <>
-                <ShoppingBag className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span>Retail Direct Storefront</span>
-              </>
-            ) : (
-              <>
-                <Building2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                <span>B2B Wholesale Portal</span>
-              </>
-            )}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border flex-1 bg-blue-950 text-blue-100 border-blue-900">
+            <Building2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+            <span>B2B Wholesale Portal • Meerut Hub</span>
           </div>
           <button
-            onClick={openExperienceGate}
-            className="text-[11px] text-slate-600 hover:text-slate-900 font-semibold px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white shadow-2xs shrink-0 active:scale-95"
+            onClick={onOpenQuickOrder}
+            className="text-[11px] text-blue-700 hover:text-blue-900 font-bold px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 shadow-2xs shrink-0 active:scale-95"
           >
-            Change Store
+            Bulk Order Pad
           </button>
         </div>
 
@@ -420,7 +364,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={mode === 'B2B' ? "Search SKU, bulk supplies in Meerut..." : "Search items, tech, office gear..."}
+              placeholder="Search wholesale SKU, HSN, bulk supplies in Meerut..."
               className="w-full bg-slate-100 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
             />
             {searchQuery && (
@@ -534,12 +478,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </div>
 
-            {/* Wholesale registration link - strictly in B2B mode only */}
-            {mode === 'B2B' && (currentUser?.role === 'd2c_customer' || !currentUser || currentUser?.role === 'guest') && (
+            {/* Wholesale registration link */}
+            {(!currentUser || currentUser?.role === 'guest') && (
               <button
                 onClick={() => {
                   setMobileMenuOpen(false);
-                  setActiveModal('b2b_register');
+                  openAuthModal('signup');
                 }}
                 className="w-full p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs font-bold flex items-center justify-center gap-1.5 transition"
               >
@@ -547,17 +491,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span>Register Business for Wholesale GSTIN Pricing</span>
               </button>
             )}
-
-            {/* Switch Storefront Experience trigger */}
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                openExperienceGate();
-              }}
-              className="w-full py-2 text-center text-xs text-slate-600 hover:text-slate-900 font-semibold border-t border-slate-200/80 pt-2 transition flex items-center justify-center gap-1.5"
-            >
-              <span>Change Store Mode (Retail / B2B)</span>
-            </button>
           </div>
         )}
 
@@ -570,9 +503,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => setSelectedCategory(cat)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shrink-0 active:scale-95 ${
                 selectedCategory === cat
-                  ? mode === 'B2B'
-                    ? 'bg-blue-900 text-white font-bold shadow-xs'
-                    : 'bg-emerald-600 text-white font-bold shadow-xs'
+                  ? 'bg-blue-900 text-white font-bold shadow-xs'
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
               }`}
             >

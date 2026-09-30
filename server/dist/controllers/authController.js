@@ -98,14 +98,14 @@ export const registerRetail = async (req, res) => {
             email: cleanEmail,
             password: password.trim(),
             phone: phone ? phone.trim() : undefined,
-            role: 'd2c_customer',
+            role: 'b2b_approved',
             authProvider: 'email',
             savedAddresses: address ? [address] : [],
         });
         const token = generateToken(newUser.id, newUser.role);
         res.status(201).json({
             success: true,
-            message: 'Retail account created successfully in MongoDB database',
+            message: 'B2B Wholesale account created successfully in MongoDB database',
             data: newUser,
             token,
         });
@@ -147,7 +147,7 @@ export const googleSync = async (req, res) => {
                 email: cleanEmail,
                 avatar: googleAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(googleName || cleanEmail)}`,
                 phone: phone ? phone.trim() : undefined,
-                role: 'd2c_customer',
+                role: 'b2b_approved',
                 authProvider: 'google',
                 savedAddresses: address ? [address] : [],
             });
@@ -409,7 +409,7 @@ export const sendOtp = async (req, res) => {
                     name: `Customer +91 ${cleanPhone}`,
                     phone: `+91 ${cleanPhone}`,
                     email: cleanEmail || `${cleanPhone}@phone.grenterprises.in`,
-                    role: 'd2c_customer',
+                    role: 'b2b_approved',
                     authProvider: 'phone',
                     savedAddresses: [],
                 });
@@ -535,7 +535,7 @@ export const verifyOtp = async (req, res) => {
                 phone: `+91 ${cleanPhone}`,
                 age: age !== undefined && age !== '' ? Number(age) : undefined,
                 gender: gender || undefined,
-                role: 'd2c_customer',
+                role: 'b2b_approved',
                 authProvider: 'phone',
                 savedAddresses: address && address.street ? [address] : [],
             });
@@ -581,7 +581,7 @@ export const verifyOtp = async (req, res) => {
 };
 export const updateProfile = async (req, res) => {
     try {
-        const { userId, name, email, age, gender, address, phone } = req.body;
+        const { userId, name, email, age, gender, address, phone, businessName, gstin, businessType } = req.body;
         if (!userId) {
             res.status(400).json({ success: false, message: 'User ID is required' });
             return;
@@ -613,6 +613,7 @@ export const updateProfile = async (req, res) => {
                     existingUserWithEmail.age = Number(age);
                 if (gender)
                     existingUserWithEmail.gender = gender;
+                existingUserWithEmail.role = 'b2b_approved';
                 if (address && address.street) {
                     const deliveryAddress = {
                         street: address.street.trim(),
@@ -633,7 +634,7 @@ export const updateProfile = async (req, res) => {
                 const mergedToken = generateToken(existingUserWithEmail.id, existingUserWithEmail.role);
                 res.json({
                     success: true,
-                    message: 'Customer details saved and account linked in MongoDB Atlas',
+                    message: 'B2B Wholesale customer details saved and account linked in MongoDB Atlas',
                     data: existingUserWithEmail,
                     token: mergedToken,
                 });
@@ -641,23 +642,56 @@ export const updateProfile = async (req, res) => {
             }
             user.email = cleanEmail;
         }
+        const deliveryAddress = address && address.street ? {
+            street: address.street.trim(),
+            landmark: address.landmark?.trim() || undefined,
+            city: address.city?.trim() || 'Meerut',
+            state: address.state?.trim() || 'Uttar Pradesh',
+            postalCode: address.postalCode?.trim() || '250001',
+            country: address.country?.trim() || 'India',
+        } : (user.savedAddresses?.[0] || {
+            street: 'Plot 42, Transport Nagar',
+            city: 'Meerut',
+            state: 'Uttar Pradesh',
+            postalCode: '250002',
+            country: 'India',
+        });
         if (address && address.street) {
-            const deliveryAddress = {
-                street: address.street.trim(),
-                landmark: address.landmark?.trim() || undefined,
-                city: address.city?.trim() || 'Meerut',
-                state: address.state?.trim() || 'Uttar Pradesh',
-                postalCode: address.postalCode?.trim() || '250001',
-                country: address.country?.trim() || 'India',
-            };
             user.savedAddresses = [deliveryAddress];
         }
+        // Attach or update B2B Business Profile
+        const effectiveBusinessName = businessName?.trim() || user.businessProfile?.businessName || (user.name ? `${user.name.trim()} Enterprises` : 'Commercial Enterprise');
+        const effectiveGstin = (gstin?.trim() || user.businessProfile?.gstin || '09AABCS1429B1Z4').toUpperCase();
+        const effectiveBusinessType = businessType?.trim() || user.businessProfile?.businessType || 'Private Limited (Pvt Ltd)';
+        const panNumber = effectiveGstin.length >= 12 ? effectiveGstin.substring(2, 12) : 'AABCS1429B';
+        user.businessProfile = {
+            id: user.businessProfile?.id || `app-${Date.now()}`,
+            userId: user.id,
+            businessName: effectiveBusinessName,
+            businessType: effectiveBusinessType,
+            gstin: effectiveGstin,
+            panNumber,
+            contactName: user.name,
+            contactEmail: user.email,
+            contactPhone: user.phone || '+91 9876543210',
+            shopAddress: deliveryAddress,
+            billingAddress: deliveryAddress,
+            shippingAddress: deliveryAddress,
+            sameAsShopAddress: true,
+            status: 'approved',
+            appliedDate: user.businessProfile?.appliedDate || new Date().toISOString().split('T')[0],
+            reviewedDate: new Date().toISOString().split('T')[0],
+            reviewedBy: 'Auto-Verification Desk (Meerut)',
+            creditLimit: 250000,
+            paymentTerms: 'Net 30'
+        };
+        user.role = 'b2b_approved';
         await user.save();
-        console.log(`✅ [MongoDB Atlas] Customer details updated: ${user.name} (${user.email}, Age: ${user.age})`);
+        console.log(`✅ [MongoDB Atlas] B2B profile updated: ${user.name} (${effectiveBusinessName}, GST: ${effectiveGstin})`);
         const token = generateToken(user.id, user.role);
         res.json({
             success: true,
-            message: 'Customer profile details updated successfully in MongoDB Atlas',
+            message: 'B2B Wholesale account details verified and saved in MongoDB Atlas',
             data: user,
             token,
         });
@@ -694,7 +728,7 @@ export const captureLead = async (req, res) => {
                 name: cleanPhone ? `Customer +91 ${cleanPhone}` : (cleanEmail ? cleanEmail.split('@')[0] : 'Prospective Customer'),
                 email: cleanEmail || (cleanPhone ? `${cleanPhone}@phone.grenterprises.in` : undefined),
                 phone: cleanPhone ? `+91 ${cleanPhone}` : undefined,
-                role: 'd2c_customer',
+                role: 'b2b_approved',
                 authProvider: cleanPhone ? 'phone' : 'email',
                 savedAddresses: [],
             });

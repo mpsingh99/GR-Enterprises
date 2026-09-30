@@ -5,21 +5,13 @@ import { Footer } from './components/common/Footer';
 import { ToastContainer } from './components/common/ToastContainer';
 import { CartDrawer } from './components/common/CartDrawer';
 import { CustomerAuthModal } from './components/common/CustomerAuthModal';
-import { ExperienceGateModal } from './components/common/ExperienceGateModal';
 import { MobileBottomNav } from './components/common/MobileBottomNav';
 
-// D2C Components
-import { D2CHero } from './components/d2c/D2CHero';
-import { D2CProductCard } from './components/d2c/D2CProductCard';
-import { D2CProductDetailModal } from './components/d2c/D2CProductDetailModal';
-import { D2CCheckoutModal } from './components/d2c/D2CCheckoutModal';
-import { OrderSuccessModal } from './components/d2c/OrderSuccessModal';
-import { OrderHistoryModal } from './components/d2c/OrderHistoryModal';
-
-// B2B Components
+// B2B Wholesale Components
 import { B2BHero } from './components/b2b/B2BHero';
 import { B2BProductCard } from './components/b2b/B2BProductCard';
 import { B2BProductDetailModal } from './components/b2b/B2BProductDetailModal';
+import { B2BCheckoutModal } from './components/b2b/B2BCheckoutModal';
 import { B2BRegistrationModal } from './components/b2b/B2BRegistrationModal';
 import { B2BApplicationStatusModal } from './components/b2b/B2BApplicationStatusModal';
 import { B2BQuickOrderPad } from './components/b2b/B2BQuickOrderPad';
@@ -27,16 +19,18 @@ import { B2BQuoteModal } from './components/b2b/B2BQuoteModal';
 import { B2BQuotesListModal } from './components/b2b/B2BQuotesListModal';
 import { B2BInvoiceModal } from './components/b2b/B2BInvoiceModal';
 
-// Admin Component
+// Order History & Success Modals (Commercial Wholesale Invoices & Orders)
+import { B2BOrderSuccessModal } from './components/b2b/B2BOrderSuccessModal';
+import { B2BOrderHistoryModal } from './components/b2b/B2BOrderHistoryModal';
+
+// Admin Command Dashboard
 import { AdminDashboard } from './components/admin/AdminDashboard';
 
 import { Product, Order } from './types';
-import { ShoppingBag, Building2, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Building2, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 
 const MainStorefront: React.FC = () => {
   const {
-    mode,
-    setMode,
     products,
     searchQuery,
     setSearchQuery,
@@ -44,20 +38,17 @@ const MainStorefront: React.FC = () => {
     setSelectedCategory,
     activeModal,
     setActiveModal,
-    selectedProductId,
-    setSelectedProductId,
     selectedInvoiceOrder,
     setSelectedInvoiceOrder,
     selectedQuoteProduct,
     setSelectedQuoteProduct,
     isAuthModalOpen,
     setIsAuthModalOpen,
-    showToast
   } = useApp();
 
   // Local modal states
   const [selectedProductForDetail, setSelectedProductForDetail] = useState<Product | null>(null);
-  const [isD2CCheckoutOpen, setIsD2CCheckoutOpen] = useState(false);
+  const [isB2BCheckoutOpen, setIsB2BCheckoutOpen] = useState(false);
   const [isOrderHistoryOpen, setIsOrderHistoryOpen] = useState(false);
   const [isQuotesModalOpen, setIsQuotesModalOpen] = useState(false);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
@@ -88,7 +79,7 @@ const MainStorefront: React.FC = () => {
   };
 
   const handleOrderSuccess = (order: Order) => {
-    setIsD2CCheckoutOpen(false);
+    setIsB2BCheckoutOpen(false);
     setLatestConfirmedOrder(order);
   };
 
@@ -103,34 +94,28 @@ const MainStorefront: React.FC = () => {
         onOpenB2BStatus={() => setActiveModal('b2b_status')}
       />
 
-      {/* 3. Hero Banner (Switches based on D2C vs B2B) */}
+      {/* 2. B2B Wholesale Hero Banner */}
       <main className="flex-1">
-        {mode === 'D2C' ? (
-          <D2CHero />
-        ) : (
-          <B2BHero
-            onOpenRegister={() => setActiveModal('b2b_register')}
-            onOpenStatus={() => setActiveModal('b2b_status')}
-            onOpenQuickOrder={() => setActiveModal('b2b_quick_order')}
-          />
-        )}
+        <B2BHero
+          onOpenRegister={() => setActiveModal('b2b_register')}
+          onOpenStatus={() => setActiveModal('b2b_status')}
+          onOpenQuickOrder={() => setActiveModal('b2b_quick_order')}
+        />
 
-        {/* 4. Product Catalog Section */}
+        {/* 3. Wholesale Product Catalog Section */}
         <section id="catalog" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           
           {/* Section Header & View Cues */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-200">
             <div>
               <div className="flex items-center gap-2">
-                <span className={`w-3 h-3 rounded-full ${mode === 'B2B' ? 'bg-blue-600' : 'bg-emerald-500'}`}></span>
+                <span className="w-3 h-3 rounded-full bg-blue-600"></span>
                 <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                  {mode === 'B2B' ? 'Wholesale Commercial Catalog' : 'Direct Retail Storefront'}
+                  Wholesale Commercial Catalog (Meerut Hub)
                 </h2>
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                {mode === 'B2B'
-                  ? 'Bulk pricing tiers, case packs, and corporate invoice eligible products'
-                  : 'Fast doorstep delivery, consumer warranty, and flexible payment options'}
+                Tiered volume pricing, MOQ, case packs, and GST Input Tax Credit (ITC) compliant commercial supplies
               </p>
             </div>
 
@@ -172,37 +157,25 @@ const MainStorefront: React.FC = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {filteredProducts.map(product => {
-                if (mode === 'D2C') {
-                  return (
-                    <D2CProductCard
-                      key={product.id}
-                      product={product}
-                      onOpenDetail={handleOpenDetail}
-                    />
-                  );
-                } else {
-                  return (
-                    <B2BProductCard
-                      key={product.id}
-                      product={product}
-                      onOpenDetail={handleOpenDetail}
-                      onOpenQuote={handleOpenQuote}
-                      onOpenRegister={() => setActiveModal('b2b_register')}
-                    />
-                  );
-                }
-              })}
+              {filteredProducts.map(product => (
+                <B2BProductCard
+                  key={product.id}
+                  product={product}
+                  onOpenDetail={handleOpenDetail}
+                  onOpenQuote={handleOpenQuote}
+                  onOpenRegister={() => setActiveModal('b2b_register')}
+                />
+              ))}
             </div>
           )}
 
         </section>
       </main>
 
-      {/* 5. Footer */}
+      {/* 4. Footer */}
       <Footer />
 
-      {/* 6. Fixed Mobile Bottom Navigation Bar */}
+      {/* 5. Fixed Mobile Bottom Navigation Bar */}
       <MobileBottomNav
         onOpenOrders={() => setIsOrderHistoryOpen(true)}
         onOpenAdmin={() => setIsAdminDashboardOpen(true)}
@@ -220,25 +193,12 @@ const MainStorefront: React.FC = () => {
       {/* Flyout Cart Drawer */}
       <CartDrawer
         onProceedToCheckout={() => {
-          if (mode === 'D2C') {
-            setIsD2CCheckoutOpen(true);
-          } else {
-            // For B2B, checkout also uses D2C/B2B flow
-            setIsD2CCheckoutOpen(true);
-          }
+          setIsB2BCheckoutOpen(true);
         }}
       />
 
-      {/* D2C Product Detail Modal */}
-      {mode === 'D2C' && selectedProductForDetail && (
-        <D2CProductDetailModal
-          product={selectedProductForDetail}
-          onClose={() => setSelectedProductForDetail(null)}
-        />
-      )}
-
       {/* B2B Product Detail Modal */}
-      {mode === 'B2B' && selectedProductForDetail && (
+      {selectedProductForDetail && (
         <B2BProductDetailModal
           product={selectedProductForDetail}
           onClose={() => setSelectedProductForDetail(null)}
@@ -247,22 +207,22 @@ const MainStorefront: React.FC = () => {
         />
       )}
 
-      {/* Retail Checkout Modal */}
-      <D2CCheckoutModal
-        isOpen={isD2CCheckoutOpen}
-        onClose={() => setIsD2CCheckoutOpen(false)}
+      {/* Dedicated B2B Wholesale Checkout Modal */}
+      <B2BCheckoutModal
+        isOpen={isB2BCheckoutOpen}
+        onClose={() => setIsB2BCheckoutOpen(false)}
         onOrderSuccess={handleOrderSuccess}
       />
 
-      {/* Order Success Modal */}
-      <OrderSuccessModal
+      {/* Wholesale Order Confirmation Modal */}
+      <B2BOrderSuccessModal
         order={latestConfirmedOrder}
         onClose={() => setLatestConfirmedOrder(null)}
         onViewInvoice={handleOpenInvoice}
       />
 
-      {/* Customer Order History Modal */}
-      <OrderHistoryModal
+      {/* Commercial Wholesale Order History & Tax Invoices Modal */}
+      <B2BOrderHistoryModal
         isOpen={isOrderHistoryOpen}
         onClose={() => setIsOrderHistoryOpen(false)}
         onViewInvoice={handleOpenInvoice}
@@ -322,14 +282,11 @@ const MainStorefront: React.FC = () => {
         onViewInvoice={handleOpenInvoice}
       />
 
-      {/* Website Retail Customer Sign-Up & Sign-In Modal */}
+      {/* Website Business Account Sign-Up & Sign-In Modal */}
       <CustomerAuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
       />
-
-      {/* Opening Visit Experience Gate Modal (Retail vs B2B Choice) */}
-      <ExperienceGateModal />
 
       {/* Animated Toast System */}
       <ToastContainer />

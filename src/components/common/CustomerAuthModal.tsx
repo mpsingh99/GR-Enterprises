@@ -81,6 +81,9 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   const [verifiedCustomer, setVerifiedCustomer] = useState<any>(null);
   const [age, setAge] = useState<string>('');
   const [gender, setGender] = useState<string>('Male');
+  const [businessName, setBusinessName] = useState<string>('');
+  const [gstin, setGstin] = useState<string>('');
+  const [businessType, setBusinessType] = useState<string>('Private Limited (Pvt Ltd)');
   const [isSavingProfile, setIsSavingProfile] = useState<boolean>(false);
 
   // ================= 2. REAL GOOGLE OAUTH 2.0 STATE =================
@@ -352,6 +355,9 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           if (user.email && !isDefaultEmail) setEmail(user.email);
           if (user.age) setAge(String(user.age));
           if (user.gender) setGender(user.gender);
+          if (user.businessProfile?.businessName) setBusinessName(user.businessProfile.businessName);
+          if (user.businessProfile?.gstin) setGstin(user.businessProfile.gstin);
+          if (user.businessProfile?.businessType) setBusinessType(user.businessProfile.businessType);
           if (user.savedAddresses && user.savedAddresses.length > 0) {
             const addr = user.savedAddresses[0];
             if (addr.street && addr.street !== 'Central City Area') setStreet(addr.street);
@@ -361,7 +367,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
             if (addr.postalCode) setPostalCode(addr.postalCode);
           }
           setOtpStep('profile');
-          showToast('Phone Number Verified', 'Please complete your customer details to finish registration.', 'info');
+          showToast('Phone Number Verified', 'Please complete your business details to finish wholesale registration.', 'info');
         } else {
           // Existing user with complete profile signing in
           completeLogin(user);
@@ -429,6 +435,9 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         gender: gender || 'Male',
         address: deliveryAddress,
         phone: verifiedCustomer?.phone || `+91 ${cleanPhoneDigits}`,
+        businessName: businessName.trim() || undefined,
+        gstin: gstin.trim().toUpperCase() || undefined,
+        businessType: businessType || undefined,
       });
 
       setIsSavingProfile(false);
@@ -557,10 +566,10 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
               </div>
               <div>
                 <h2 className="text-base sm:text-lg font-bold text-slate-900">
-                  {activeTab === 'signup' ? 'Create Customer Account' : 'Customer Sign-In'}
+                  {activeTab === 'signup' ? 'Create Business Account' : 'Business Account Sign-In'}
                 </h2>
                 <p className="text-xs text-slate-500">
-                  GR Enterprises • Verified Customer Authentication & MongoDB Atlas Storage
+                  GR Enterprises • B2B Wholesale Portal & Verified MongoDB Storage
                 </p>
               </div>
             </div>
@@ -696,10 +705,58 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   </div>
 
                   <div className="text-center pb-1">
-                    <h3 className="font-black text-slate-900 text-base">Complete Customer Details</h3>
+                    <h3 className="font-black text-slate-900 text-base">Complete Business Profile</h3>
                     <p className="text-[11px] text-slate-500">
-                      Please enter your name, age, email and delivery address for order fulfillment & invoicing.
+                      Enter your company details, GSTIN, and commercial warehouse address for wholesale orders & tax invoicing.
                     </p>
+                  </div>
+
+                  {/* Commercial & Tax Identification Card */}
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                    <p className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <Building className="w-3.5 h-3.5 text-blue-700" />
+                      <span>Commercial & Tax Details</span>
+                    </p>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Company / Trade Name *</label>
+                      <input
+                        type="text"
+                        value={businessName}
+                        onChange={e => setBusinessName(e.target.value)}
+                        placeholder="e.g. Shree Ganesh Traders & Enterprises"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-600 shadow-xs"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">Buyer GSTIN (Optional)</label>
+                        <input
+                          type="text"
+                          maxLength={15}
+                          value={gstin}
+                          onChange={e => setGstin(e.target.value.toUpperCase())}
+                          placeholder="e.g. 09AABCS1429B1Z4"
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold uppercase focus:ring-2 focus:ring-blue-600 shadow-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">Business Constitution</label>
+                        <select
+                          value={businessType}
+                          onChange={e => setBusinessType(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-600 shadow-xs"
+                        >
+                          <option value="Private Limited (Pvt Ltd)">Private Limited (Pvt Ltd)</option>
+                          <option value="Sole Proprietorship">Sole Proprietorship</option>
+                          <option value="Partnership Firm">Partnership Firm</option>
+                          <option value="Limited Liability Partnership (LLP)">Limited Liability Partnership (LLP)</option>
+                          <option value="Public Limited">Public Limited</option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Personal Information Card */}

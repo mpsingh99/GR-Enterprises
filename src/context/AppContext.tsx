@@ -176,6 +176,9 @@ interface AppContextType {
     gender?: string;
     address: Address;
     phone?: string;
+    businessName?: string;
+    gstin?: string;
+    businessType?: string;
   }) => Promise<User | null>;
 
   // Experience Gateway (Initial Visit Chooser)
@@ -217,11 +220,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Mode: D2C or B2B
-  const [mode, setModeState] = useState<CustomerMode>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.MODE);
-    return (saved === 'B2B' || saved === 'D2C') ? saved : 'D2C';
-  });
+  // Mode: Pure B2B Wholesale Portal permanently
+  const [mode, setModeState] = useState<CustomerMode>('B2B');
 
   // Users Directory
   const [users, setUsers] = useState<User[]>(() => {
@@ -236,19 +236,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return INITIAL_USERS.find(u => u.role === savedRole) || null;
   });
 
-  // Experience Gateway (Prompts visitor on opening site: Retail or B2B)
-  const [isExperienceGateOpen, setIsExperienceGateOpen] = useState<boolean>(() => {
-    return !sessionStorage.getItem('gre_experience_chosen');
-  });
+  // Experience Gateway - disabled for pure B2B portal
+  const [isExperienceGateOpen, setIsExperienceGateOpen] = useState<boolean>(false);
 
   const openExperienceGate = () => {
-    setIsExperienceGateOpen(true);
+    setIsExperienceGateOpen(false);
   };
 
-  const selectExperience = (chosenMode: CustomerMode) => {
-    setModeState(chosenMode);
-    localStorage.setItem(LOCAL_STORAGE_KEYS.MODE, chosenMode);
-    sessionStorage.setItem('gre_experience_chosen', chosenMode);
+  const selectExperience = (_chosenMode: CustomerMode) => {
+    setModeState('B2B');
     setIsExperienceGateOpen(false);
   };
 
@@ -408,49 +404,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
-  const setMode = (newMode: CustomerMode) => {
-    setModeState(newMode);
-    if (newMode === 'B2B') {
-      showToast(
-        'GR Enterprises • B2B Wholesale Mode',
-        'Viewing enterprise products, wholesale pricing tiers, and case pack requirements.',
-        'info'
-      );
-    } else {
-      showToast(
-        'GR Enterprises • D2C Retail Mode',
-        'Viewing consumer retail storefront with direct checkout from Meerut hub.',
-        'info'
-      );
-    }
+  const setMode = (_newMode: CustomerMode) => {
+    setModeState('B2B');
+    showToast(
+      'GR Enterprises • B2B Wholesale Portal',
+      'Browsing wholesale catalog with volume tiers, case packs, and corporate invoicing.',
+      'info'
+    );
   };
 
   const switchPersona = (roleKey: 'guest' | 'd2c_customer' | 'b2b_pending' | 'b2b_needs_info' | 'b2b_approved' | 'admin') => {
     localStorage.setItem(LOCAL_STORAGE_KEYS.USER_ROLE, roleKey);
+    setModeState('B2B');
+
     if (roleKey === 'guest') {
       setCurrentUser(null);
-      showToast('Switched Persona', 'Now browsing as Unregistered Guest', 'info');
+      showToast('Switched Persona', 'Now browsing wholesale catalog as Unregistered Guest', 'info');
       return;
     }
 
-    const matched = users.find(u => u.role === roleKey) || INITIAL_USERS.find(u => u.role === roleKey);
+    const effectiveRole = roleKey === 'd2c_customer' ? 'b2b_approved' : roleKey;
+    const matched = users.find(u => u.role === effectiveRole) || INITIAL_USERS.find(u => u.role === effectiveRole);
     if (matched) {
-      let updatedUser = { ...matched };
+      let updatedUser = { ...matched, role: effectiveRole as UserRole };
       if (matched.businessProfile) {
         const freshApp = b2bApplications.find(a => a.id === matched.businessProfile?.id) || matched.businessProfile;
         updatedUser.businessProfile = freshApp;
       }
       setCurrentUser(updatedUser);
 
-      if (roleKey.startsWith('b2b')) {
-        setModeState('B2B');
-      } else if (roleKey === 'd2c_customer') {
-        setModeState('D2C');
-      }
-
       showToast(
         'Persona Switched',
-        `Logged in as ${matched.name} (${roleKey.toUpperCase()})`,
+        `Logged in as ${matched.name} (${effectiveRole.toUpperCase()})`,
         'success'
       );
     }
@@ -492,19 +477,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return null;
       }
 
-      setCurrentUser(backendUser);
-      setModeState('D2C');
-      setUsers(prev => [backendUser, ...prev.filter(u => u.email.toLowerCase() !== backendUser.email.toLowerCase())]);
+      const b2bUser: User = {
+        ...backendUser,
+        role: (backendUser.role === 'd2c_customer' || backendUser.role === 'guest') ? 'b2b_approved' : backendUser.role
+      };
+
+      setCurrentUser(b2bUser);
+      setModeState('B2B');
+      setUsers(prev => [b2bUser, ...prev.filter(u => u.email.toLowerCase() !== b2bUser.email.toLowerCase())]);
 
       if (guestOrderIds.length > 0) {
         setOrders(prev => prev.map(o => {
           if (guestOrderIds.includes(o.id)) {
             return {
               ...o,
-              customerId: backendUser.id,
-              customerName: backendUser.name,
-              customerEmail: backendUser.email,
-              customerPhone: backendUser.phone || o.customerPhone,
+              customerId: b2bUser.id,
+              customerName: b2bUser.name,
+              customerEmail: b2bUser.email,
+              customerPhone: b2bUser.phone || o.customerPhone,
               isGuest: false
             };
           }
@@ -514,11 +504,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       showToast(
         'Google Verified & Saved',
-        `Welcome to GR Enterprises, ${backendUser.name}! Account saved directly in MongoDB database.`,
+        `Welcome to GR Enterprises Wholesale, ${b2bUser.name}! Account saved directly in MongoDB database.`,
         'success'
       );
 
-      return backendUser;
+      return b2bUser;
     } catch (err: any) {
       showToast('Google Sign-In Error', err.message || 'Failed to authenticate with Google.', 'error');
       return null;
@@ -546,19 +536,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return null;
       }
 
-      setCurrentUser(backendUser);
-      setModeState('D2C');
-      setUsers(prev => [backendUser, ...prev.filter(u => u.email.toLowerCase() !== backendUser.email.toLowerCase())]);
+      const b2bUser: User = {
+        ...backendUser,
+        role: (backendUser.role === 'd2c_customer' || backendUser.role === 'guest') ? 'b2b_approved' : backendUser.role
+      };
+
+      setCurrentUser(b2bUser);
+      setModeState('B2B');
+      setUsers(prev => [b2bUser, ...prev.filter(u => u.email.toLowerCase() !== b2bUser.email.toLowerCase())]);
 
       if (guestOrderIds.length > 0) {
         setOrders(prev => prev.map(o => {
           if (guestOrderIds.includes(o.id)) {
             return {
               ...o,
-              customerId: backendUser.id,
-              customerName: backendUser.name,
-              customerEmail: backendUser.email,
-              customerPhone: backendUser.phone || o.customerPhone,
+              customerId: b2bUser.id,
+              customerName: b2bUser.name,
+              customerEmail: b2bUser.email,
+              customerPhone: b2bUser.phone || o.customerPhone,
               isGuest: false
             };
           }
@@ -568,11 +563,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       showToast(
         'Account Registered in Database',
-        `Welcome to GR Enterprises, ${backendUser.name}! Your account and delivery details are safely stored in MongoDB Atlas.`,
+        `Welcome to GR Enterprises Wholesale, ${b2bUser.name}! Your account and commercial delivery details are safely stored in MongoDB Atlas.`,
         'success'
       );
 
-      return backendUser;
+      return b2bUser;
     } catch (err: any) {
       showToast('Registration Error', err.message || 'Failed to register account.', 'error');
       return null;
@@ -587,16 +582,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return null;
       }
 
-      setCurrentUser(backendUser);
-      if (backendUser.role.startsWith('b2b')) {
-        setModeState('B2B');
-      } else {
-        setModeState('D2C');
-      }
-      setUsers(prev => [backendUser, ...prev.filter(u => u.email.toLowerCase() !== backendUser.email.toLowerCase())]);
+      const b2bUser: User = {
+        ...backendUser,
+        role: (backendUser.role === 'd2c_customer' || backendUser.role === 'guest') ? 'b2b_approved' : backendUser.role
+      };
 
-      showToast('Logged In Successfully', `Welcome back, ${backendUser.name}!`, 'success');
-      return backendUser;
+      setCurrentUser(b2bUser);
+      setModeState('B2B');
+      setUsers(prev => [b2bUser, ...prev.filter(u => u.email.toLowerCase() !== b2bUser.email.toLowerCase())]);
+
+      showToast('Logged In Successfully', `Welcome back, ${b2bUser.name}!`, 'success');
+      return b2bUser;
     } catch (err: any) {
       showToast('Login Error', err.message || 'Unable to log in.', 'error');
       return null;
@@ -640,9 +636,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const completeLogin = (user: User) => {
-    setCurrentUser(user);
-    setModeState('D2C');
-    setUsers(prev => [user, ...prev.filter(u => u.id !== user.id)]);
+    const b2bUser: User = {
+      ...user,
+      role: (user.role === 'd2c_customer' || user.role === 'guest') ? 'b2b_approved' : user.role
+    };
+
+    setCurrentUser(b2bUser);
+    setModeState('B2B');
+    setUsers(prev => [b2bUser, ...prev.filter(u => u.id !== user.id)]);
 
     // Link guest orders
     if (guestOrderIds.length > 0) {
@@ -650,10 +651,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (guestOrderIds.includes(o.id)) {
           return {
             ...o,
-            customerId: user.id,
-            customerName: user.name,
-            customerEmail: user.email,
-            customerPhone: user.phone || o.customerPhone,
+            customerId: b2bUser.id,
+            customerName: b2bUser.name,
+            customerEmail: b2bUser.email,
+            customerPhone: b2bUser.phone || o.customerPhone,
             isGuest: false
           };
         }
@@ -715,12 +716,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     gender?: string;
     address: Address;
     phone?: string;
+    businessName?: string;
+    gstin?: string;
+    businessType?: string;
   }): Promise<User | null> => {
     try {
       const updatedUser = await apiUpdateProfile(profileData);
       if (updatedUser) {
         completeLogin(updatedUser);
-        showToast('Profile Details Saved', `Welcome, ${updatedUser.name}! Your details and delivery address are saved in MongoDB Atlas.`, 'success');
+        showToast('Wholesale Account Saved', `Welcome, ${updatedUser.name}! Your business profile and commercial delivery details are saved in MongoDB Atlas.`, 'success');
         return updatedUser;
       }
       return null;
@@ -772,23 +776,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    const unitPrice = mode === 'B2B' 
-      ? getB2BUnitPrice(product, quantity) + (variant?.additionalPrice || 0)
-      : product.retailPrice + (variant?.additionalPrice || 0);
+    const unitPrice = getB2BUnitPrice(product, quantity) + (variant?.additionalPrice || 0);
 
     setCart(prev => {
       const existingIndex = prev.findIndex(item => 
         item.productId === product.id && 
-        item.mode === mode && 
         item.selectedVariant?.id === variant?.id
       );
 
       if (existingIndex > -1) {
         const updated = [...prev];
         const newQty = updated[existingIndex].quantity + quantity;
-        const newUnitPrice = mode === 'B2B' 
-          ? getB2BUnitPrice(product, newQty) + (variant?.additionalPrice || 0)
-          : product.retailPrice + (variant?.additionalPrice || 0);
+        const newUnitPrice = getB2BUnitPrice(product, newQty) + (variant?.additionalPrice || 0);
 
         updated[existingIndex] = {
           ...updated[existingIndex],
@@ -801,7 +800,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           productId: product.id,
           product,
           quantity,
-          mode,
+          mode: 'B2B',
           selectedVariant: variant,
           unitPrice
         }];
@@ -809,8 +808,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     showToast(
-      'Added to Cart',
-      `Added ${quantity} ${product.unit}(s) of "${product.title}" to your ${mode} cart.`,
+      'Added to Wholesale PO Cart',
+      `Added ${quantity} ${product.unit}(s) of "${product.title}" to your B2B purchase order cart.`,
       'success'
     );
     setIsCartDrawerOpen(true);
@@ -825,9 +824,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setCart(prev => prev.map(item => {
       if (item.productId === productId && item.selectedVariant?.id === variantId) {
-        const newUnitPrice = item.mode === 'B2B'
-          ? getB2BUnitPrice(item.product, quantity) + (item.selectedVariant?.additionalPrice || 0)
-          : item.product.retailPrice + (item.selectedVariant?.additionalPrice || 0);
+        const newUnitPrice = getB2BUnitPrice(item.product, quantity) + (item.selectedVariant?.additionalPrice || 0);
         return {
           ...item,
           quantity,
@@ -850,19 +847,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const cartSubtotal = cart.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
 
-  // Orders
+  // Orders (Pure B2B Wholesale Purchase Orders)
   const createOrder = (orderData: Omit<Order, 'id' | 'orderNumber' | 'invoiceNumber' | 'date' | 'status'>): Order => {
     const timestamp = Date.now().toString().slice(-4);
     const randomDigit = Math.floor(1000 + Math.random() * 9000);
-    const orderNumber = orderData.mode === 'B2B' 
-      ? `GRE-B2B-2026-${randomDigit}`
-      : `GRE-D2C-2026-${randomDigit}`;
-    const invoiceNumber = orderData.mode === 'B2B'
-      ? `INV-2026-GRE-B2B-${randomDigit}`
-      : `INV-2026-GRE-RET-${randomDigit}`;
+    const orderNumber = `GRE-B2B-2026-${randomDigit}`;
+    const invoiceNumber = `INV-2026-GRE-B2B-${randomDigit}`;
 
     const newOrder: Order = {
       ...orderData,
+      mode: 'B2B',
       id: `ord-${timestamp}`,
       orderNumber,
       invoiceNumber,
@@ -1060,10 +1054,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     sessionStorage.removeItem('gre_experience_chosen');
 
-    setModeState('D2C');
+    setModeState('B2B');
     setStoreSettings(DEFAULT_STORE_SETTINGS);
     setCurrentUser(null);
-    setIsExperienceGateOpen(true);
+    setIsExperienceGateOpen(false);
     setUsers(INITIAL_USERS);
     setProducts(INITIAL_PRODUCTS);
     setOrders(INITIAL_ORDERS);
@@ -1071,7 +1065,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setB2bApplications(INITIAL_B2B_APPLICATIONS);
     setCart([]);
     setGuestOrderIds([]);
-    showToast('Reset Complete', 'GR Enterprises Meerut database reset to fresh visitor state.', 'info');
+    showToast('Reset Complete', 'GR Enterprises Meerut wholesale database reset to fresh state.', 'info');
   };
 
   return (

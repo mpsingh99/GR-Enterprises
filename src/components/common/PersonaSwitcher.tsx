@@ -1,29 +1,22 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { UserCheck, ShieldCheck, Clock, AlertTriangle, Building2, ShoppingBag, RotateCcw } from 'lucide-react';
+import { ShieldCheck, Clock, AlertTriangle, Building2, User, RotateCcw } from 'lucide-react';
 
 export const PersonaSwitcher: React.FC = () => {
-  const { currentUser, switchPersona, resetAllData, mode, setMode } = useApp();
+  const { currentUser, switchPersona, resetAllData } = useApp();
 
   const personas = [
     {
       key: 'guest' as const,
       label: 'Guest',
-      sub: 'Unregistered visitor',
-      icon: ShoppingBag,
+      sub: 'Unregistered business visitor',
+      icon: User,
       role: 'guest'
-    },
-    {
-      key: 'd2c_customer' as const,
-      label: 'Retail Shopper',
-      sub: 'Priya Sharma (D2C)',
-      icon: UserCheck,
-      role: 'd2c_customer'
     },
     {
       key: 'b2b_pending' as const,
       label: 'B2B Pending',
-      sub: 'Zenith Ent. (Awaiting Review)',
+      sub: 'Zenith Ent. (Awaiting Meerut Review)',
       icon: Clock,
       role: 'b2b_pending'
     },
@@ -44,7 +37,7 @@ export const PersonaSwitcher: React.FC = () => {
     {
       key: 'admin' as const,
       label: 'Admin Portal',
-      sub: 'Store Administrator',
+      sub: 'GR Enterprises Desk Administrator',
       icon: ShieldCheck,
       role: 'admin'
     }
@@ -52,23 +45,15 @@ export const PersonaSwitcher: React.FC = () => {
 
   const currentRole = currentUser ? currentUser.role : 'guest';
 
-  // Filter test personas strictly based on active store mode (Retail vs B2B)
-  const filteredPersonas = personas.filter(p => {
-    if (p.key === 'guest' || p.key === 'admin') return true;
-    if (mode === 'D2C') return p.key === 'd2c_customer';
-    if (mode === 'B2B') return p.key.startsWith('b2b');
-    return true;
-  });
-
   return (
     <div className="bg-slate-900 text-slate-200 text-xs border-b border-slate-800 px-3 py-1.5 sm:py-2 w-full max-w-full overflow-x-hidden">
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2 w-full">
         <div className="flex items-center justify-between gap-2 w-full sm:w-auto">
           <span className="inline-flex items-center gap-1 font-semibold text-amber-400 bg-amber-950/60 border border-amber-800/80 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] shrink-0">
-            ⚡ Test Accounts ({mode === 'B2B' ? 'Wholesale' : 'Retail'})
+            ⚡ Wholesale Test Personas
           </span>
           <span className="hidden sm:inline text-slate-400">
-            Switch state to test {mode === 'B2B' ? 'B2B wholesale verification' : 'direct retail checkout'}:
+            Switch state to test B2B wholesale verification, RFQ, and GST invoices:
           </span>
           <button
             onClick={resetAllData}
@@ -81,7 +66,7 @@ export const PersonaSwitcher: React.FC = () => {
         </div>
 
         <div className="flex items-center overflow-x-auto scrollbar-none gap-1 sm:gap-1.5 pb-0.5 sm:pb-0 touch-pan-x w-full sm:w-auto">
-          {filteredPersonas.map(p => {
+          {personas.map(p => {
             const isActive = currentRole === p.role;
             const Icon = p.icon;
             return (

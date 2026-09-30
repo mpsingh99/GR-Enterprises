@@ -34,12 +34,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         onClick={handleScrollCatalog}
         className="flex flex-col items-center justify-center p-1.5 min-w-[56px] text-slate-600 hover:text-slate-900 active:scale-95 transition"
       >
-        {mode === 'B2B' ? (
-          <Building2 className="w-5 h-5 text-blue-700" />
-        ) : (
-          <ShoppingBag className="w-5 h-5 text-emerald-600" />
-        )}
-        <span className="text-[10px] font-semibold mt-0.5">Catalog</span>
+        <Building2 className="w-5 h-5 text-blue-700" />
+        <span className="text-[10px] font-semibold mt-0.5">Wholesale</span>
       </button>
 
       {/* 2. Search */}

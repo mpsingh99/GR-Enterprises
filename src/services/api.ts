@@ -179,6 +179,9 @@ export const apiUpdateProfile = async (data: {
   gender?: string;
   address: any;
   phone?: string;
+  businessName?: string;
+  gstin?: string;
+  businessType?: string;
 }): Promise<User | null> => {
   return request<User>('/auth/update-profile', {
     method: 'POST',
