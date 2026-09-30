@@ -75,6 +75,8 @@ export interface User {
   phone?: string;
   role: UserRole;
   avatar?: string;
+  age?: number;
+  gender?: string;
   businessProfile?: B2BApplicationDetails;
   savedAddresses?: Address[];
   joinedDate?: string;

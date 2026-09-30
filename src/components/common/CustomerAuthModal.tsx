@@ -22,7 +22,8 @@ import {
   RotateCcw,
   Check,
   Settings,
-  HelpCircle
+  HelpCircle,
+  Calendar
 } from 'lucide-react';
 
 interface CustomerAuthModalProps {
@@ -52,6 +53,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     loginUser,
     sendPhoneOtp,
     loginWithPhoneOtp,
+    updateCustomerProfile,
     showToast 
   } = useApp();
 
@@ -71,6 +73,13 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   const [gatewayNotice, setGatewayNotice] = useState<string>('');
   const [resendCountdown, setResendCountdown] = useState<number>(0);
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Step 2 Customer Profile details state after OTP is verified
+  const [otpStep, setOtpStep] = useState<'phone' | 'profile'>('phone');
+  const [verifiedCustomer, setVerifiedCustomer] = useState<any>(null);
+  const [age, setAge] = useState<string>('');
+  const [gender, setGender] = useState<string>('Male');
+  const [isSavingProfile, setIsSavingProfile] = useState<boolean>(false);
 
   // ================= 2. REAL GOOGLE OAUTH 2.0 STATE =================
   const googleBtnContainerRef = useRef<HTMLDivElement | null>(null);
@@ -287,8 +296,84 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
     try {
       const cleanPhoneDigits = msgPhone.replace(/\D/g, '');
+      const user = await loginWithPhoneOtp(
+        cleanPhoneDigits,
+        code
+      );
+
+      setIsVerifyingOtp(false);
+      if (user) {
+        setVerifiedCustomer(user);
+
+        // Check if customer profile needs completion
+        const isDefaultName = !user.name || user.name.startsWith('Customer +91');
+        const isDefaultEmail = !user.email || user.email.includes('@phone.grenterprises.in');
+        const isAddressMissing = !user.savedAddresses || user.savedAddresses.length === 0 || !user.savedAddresses[0]?.street || user.savedAddresses[0]?.street === 'Central City Area';
+        const isIncomplete = isDefaultName || isDefaultEmail || !user.age || isAddressMissing;
+
+        if (activeTab === 'signup' || isIncomplete) {
+          if (user.name && !isDefaultName) setName(user.name);
+          if (user.email && !isDefaultEmail) setEmail(user.email);
+          if (user.age) setAge(String(user.age));
+          if (user.gender) setGender(user.gender);
+          if (user.savedAddresses && user.savedAddresses.length > 0) {
+            const addr = user.savedAddresses[0];
+            if (addr.street && addr.street !== 'Central City Area') setStreet(addr.street);
+            if (addr.landmark) setLandmark(addr.landmark);
+            if (addr.city) setCity(addr.city);
+            if (addr.state) setState(addr.state);
+            if (addr.postalCode) setPostalCode(addr.postalCode);
+          }
+          setOtpStep('profile');
+          showToast('Phone Number Verified', 'Please enter your customer profile details to finish registration.', 'info');
+        } else {
+          onClose();
+          if (onSuccess) onSuccess();
+        }
+      } else {
+        setErrorMsg('Invalid or expired OTP code. Please enter the correct code received on your mobile.');
+      }
+    } catch (err: any) {
+      setIsVerifyingOtp(false);
+      setErrorMsg(err.message || 'Verification failed. Please try again.');
+    }
+  };
+
+  // ================= HANDLER: SAVE CUSTOMER PROFILE DETAILS AFTER OTP =================
+  const handleSaveCustomerDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+
+    if (!name.trim()) {
+      setErrorMsg('Full Name is required.');
+      return;
+    }
+
+    if (!email.trim() || !email.includes('@')) {
+      setErrorMsg('A valid email address is required.');
+      return;
+    }
+
+    if (!street.trim()) {
+      setErrorMsg('Street address / House number is required for deliveries.');
+      return;
+    }
+
+    if (!city.trim()) {
+      setErrorMsg('City is required.');
+      return;
+    }
+
+    if (!postalCode.trim() || postalCode.replace(/\D/g, '').length < 6) {
+      setErrorMsg('Please enter a valid 6-digit PIN code.');
+      return;
+    }
+
+    setIsSavingProfile(true);
+
+    try {
       const deliveryAddress: Address = {
-        street: street.trim() || 'Central City Area',
+        street: street.trim(),
         landmark: landmark.trim() || undefined,
         city: city.trim() || 'Meerut',
         state: state.trim() || 'Uttar Pradesh',
@@ -296,23 +381,25 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         country: 'India',
       };
 
-      const user = await loginWithPhoneOtp(
-        cleanPhoneDigits,
-        code,
-        activeTab === 'signup' ? name.trim() : undefined,
-        deliveryAddress
-      );
+      const cleanPhoneDigits = msgPhone.replace(/\D/g, '').slice(-10);
+      const updated = await updateCustomerProfile({
+        userId: verifiedCustomer?.id,
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        age: age.trim() ? Number(age) : undefined,
+        gender: gender || 'Male',
+        address: deliveryAddress,
+        phone: verifiedCustomer?.phone || `+91 ${cleanPhoneDigits}`,
+      });
 
-      setIsVerifyingOtp(false);
-      if (user) {
+      setIsSavingProfile(false);
+      if (updated) {
         onClose();
         if (onSuccess) onSuccess();
-      } else {
-        setErrorMsg('Invalid or expired OTP code. Please enter the correct code received on your mobile.');
       }
     } catch (err: any) {
-      setIsVerifyingOtp(false);
-      setErrorMsg(err.message || 'Verification failed. Please try again.');
+      setIsSavingProfile(false);
+      setErrorMsg(err.message || 'Failed to save customer profile details.');
     }
   };
 
@@ -448,82 +535,102 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
             </button>
           </div>
 
-          {/* Top Switcher: Sign Up vs Sign In */}
-          <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 mb-3">
-            <button
-              type="button"
-              onClick={() => { setAuthModalTab('signup'); setErrorMsg(''); }}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 ${
-                activeTab === 'signup'
-                  ? 'bg-white text-blue-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>Create Account (Sign Up)</span>
-            </button>
+          {/* Top Switchers: Only show when not in Step 2 Customer Profile */}
+          {otpStep === 'profile' ? (
+            <div className="flex items-center justify-between p-2 bg-emerald-50/80 rounded-2xl border border-emerald-200">
+              <button
+                type="button"
+                onClick={() => setOtpStep('phone')}
+                className="text-[11px] font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-white transition"
+              >
+                <span>←</span>
+                <span>Back to Phone OTP</span>
+              </button>
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 pr-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Step 2: Customer Details & Address</span>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Top Switcher: Sign Up vs Sign In */}
+              <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 mb-3">
+                <button
+                  type="button"
+                  onClick={() => { setAuthModalTab('signup'); setErrorMsg(''); }}
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 ${
+                    activeTab === 'signup'
+                      ? 'bg-white text-blue-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Create Account (Sign Up)</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={() => { setAuthModalTab('signin'); setErrorMsg(''); }}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 ${
-                activeTab === 'signin'
-                  ? 'bg-white text-blue-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              <span>Sign In</span>
-            </button>
-          </div>
+                <button
+                  type="button"
+                  onClick={() => { setAuthModalTab('signin'); setErrorMsg(''); }}
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 ${
+                    activeTab === 'signin'
+                      ? 'bg-white text-blue-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Sign In</span>
+                </button>
+              </div>
 
-          {/* Authenticator Selector: Real Mobile OTP vs Real Google vs Real Email */}
-          <div className="flex items-center justify-center gap-1.5 sm:gap-2 pt-1 text-xs">
-            <button
-              type="button"
-              onClick={() => { setAuthMethod('message'); setErrorMsg(''); }}
-              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition border ${
-                authMethod === 'message'
-                  ? 'bg-emerald-50 border-emerald-500 text-emerald-800 shadow-xs'
-                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Mobile OTP</span>
-              <span className="text-[9px] bg-emerald-200 text-emerald-900 font-bold px-1.5 py-0.2 rounded-full">SMS & WhatsApp</span>
-            </button>
+              {/* Authenticator Selector: Real Mobile OTP vs Real Google vs Real Email */}
+              <div className="flex items-center justify-center gap-1.5 sm:gap-2 pt-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => { setAuthMethod('message'); setErrorMsg(''); }}
+                  className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition border ${
+                    authMethod === 'message'
+                      ? 'bg-emerald-50 border-emerald-500 text-emerald-800 shadow-xs'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Mobile OTP</span>
+                  <span className="text-[9px] bg-emerald-200 text-emerald-900 font-bold px-1.5 py-0.2 rounded-full">SMS & WhatsApp</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={() => { setAuthMethod('google'); setErrorMsg(''); }}
-              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition border ${
-                authMethod === 'google'
-                  ? 'bg-blue-50 border-blue-500 text-blue-900 shadow-xs'
-                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-              </svg>
-              <span>Google Sign-In</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => { setAuthMethod('google'); setErrorMsg(''); }}
+                  className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition border ${
+                    authMethod === 'google'
+                      ? 'bg-blue-50 border-blue-500 text-blue-900 shadow-xs'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                  <span>Google Sign-In</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={() => { setAuthMethod('email'); setErrorMsg(''); }}
-              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition border ${
-                authMethod === 'email'
-                  ? 'bg-slate-900 border-slate-900 text-white shadow-xs'
-                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <Mail className="w-3.5 h-3.5" />
-              <span>Email & Password</span>
-            </button>
-          </div>
+                <button
+                  type="button"
+                  onClick={() => { setAuthMethod('email'); setErrorMsg(''); }}
+                  className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition border ${
+                    authMethod === 'email'
+                      ? 'bg-slate-900 border-slate-900 text-white shadow-xs'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  <span>Email & Password</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Modal Scrollable Body */}
@@ -533,227 +640,371 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           {authMethod === 'message' && (
             <div className="space-y-4">
               
-              {/* Channel Selector: SMS vs WhatsApp */}
-              <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-xs">
-                      📱
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-900 text-xs sm:text-sm">Real Mobile Phone OTP</p>
-                      <p className="text-[11px] text-slate-500">Live 6-digit verification code delivered directly to your Indian mobile</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded-full">
-                    Direct Cellular Dispatch
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setMsgChannel('sms')}
-                    className={`p-2.5 rounded-xl border text-left flex items-center gap-2.5 transition ${
-                      msgChannel === 'sms'
-                        ? 'border-blue-600 bg-white ring-2 ring-blue-500/20 shadow-xs'
-                        : 'border-slate-200 bg-white/70 hover:bg-white'
-                    }`}
-                  >
-                    <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm shrink-0">
-                      💬
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-bold text-slate-900 text-xs">SMS Text Message</p>
-                      <p className="text-[10px] text-blue-700 font-semibold truncate">Direct Cellular SMS</p>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setMsgChannel('whatsapp')}
-                    className={`p-2.5 rounded-xl border text-left flex items-center gap-2.5 transition ${
-                      msgChannel === 'whatsapp'
-                        ? 'border-emerald-600 bg-white ring-2 ring-emerald-500/20 shadow-xs'
-                        : 'border-emerald-100 bg-white/70 hover:bg-white'
-                    }`}
-                  >
-                    <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0">
-                      🟢
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-bold text-slate-900 text-xs">WhatsApp Message</p>
-                      <p className="text-[10px] text-emerald-700 font-semibold truncate">Official Business Alert</p>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Mobile Phone Number Input */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                  Enter Your 10-Digit Mobile Number
-                </label>
-                <div className="flex gap-2">
-                  <div className="flex items-center gap-1.5 px-3 py-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-700 text-xs shadow-xs">
-                    <span>🇮🇳</span>
-                    <span>+91</span>
-                  </div>
-                  <input
-                    type="tel"
-                    maxLength={10}
-                    value={msgPhone}
-                    onChange={e => setMsgPhone(e.target.value.replace(/\D/g, ''))}
-                    placeholder="Enter your 10-digit number"
-                    className="flex-1 px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 shadow-xs tracking-wider"
-                  />
-                  <button
-                    type="button"
-                    disabled={isSendingOtp || msgPhone.length < 10}
-                    onClick={handleSendOtp}
-                    className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-sm shrink-0"
-                  >
-                    {isSendingOtp ? (
-                      <span>Sending...</span>
-                    ) : isOtpSent ? (
-                      <>
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span>Resend</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>Send Code</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </>
-                    )}
-                  </button>
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Verification code will be dispatched to your phone via {msgChannel === 'whatsapp' ? 'WhatsApp' : 'cellular SMS'}.
-                </p>
-              </div>
-
-              {/* Real Dispatch Notification Status */}
-              {isOtpSent && dispatchStatusMsg && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-                  <span className="font-medium">{dispatchStatusMsg}</span>
-                </div>
-              )}
-
-              {/* Gateway Configuration Notice if waiting for keys */}
-              {gatewayNotice && (
-                <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs space-y-1">
-                  <div className="flex items-center gap-1.5 font-bold">
-                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span>Live SMS Gateway Setup</span>
-                  </div>
-                  <p className="text-[11px] text-amber-800">
-                    {gatewayNotice}
-                  </p>
-                </div>
-              )}
-
-              {/* 6-Digit OTP Input & Verification */}
-              {isOtpSent && (
-                <div className="bg-white p-4 rounded-2xl border-2 border-emerald-500/40 space-y-4 shadow-sm animate-in fade-in">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                      <KeyRound className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Enter 6-Digit Code Received on Mobile</span>
-                    </span>
-                    {resendCountdown > 0 ? (
-                      <span className="text-[11px] text-slate-400 font-medium">
-                        Resend in {resendCountdown}s
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleSendOtp}
-                        className="text-[11px] text-emerald-700 font-bold hover:underline"
-                      >
-                        Resend code now
-                      </button>
-                    )}
-                  </div>
-
-                  {/* 6 Digit Input Boxes */}
-                  <div className="flex justify-between gap-1.5 sm:gap-2">
-                    {otpDigits.map((digit, index) => (
-                      <input
-                        key={index}
-                        ref={el => { otpInputRefs.current[index] = el; }}
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={1}
-                        value={digit}
-                        onChange={e => handleOtpDigitChange(index, e.target.value)}
-                        onKeyDown={e => handleOtpKeyDown(index, e)}
-                        onPaste={handlePasteOtp}
-                        className="w-10 sm:w-12 h-12 text-center text-lg font-black bg-slate-50 border-2 border-slate-300 rounded-xl focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 text-slate-900 transition"
-                      />
-                    ))}
-                  </div>
-
-                  {/* If in Sign-Up mode, also capture customer name and delivery address for database */}
-                  {activeTab === 'signup' && (
-                    <div className="pt-3 border-t border-slate-200 space-y-3">
-                      <p className="font-bold text-slate-800 text-[11px]">Customer Profile & Delivery Address for MongoDB Database</p>
+              {/* STEP 2: PROFILE DETAILS FORM (NAME, EMAIL, AGE, GENDER, ADDRESS) */}
+              {otpStep === 'profile' ? (
+                <form onSubmit={handleSaveCustomerDetails} className="space-y-4 animate-in fade-in">
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                       <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">Your Full Name *</label>
+                        <p className="font-bold text-slate-900 text-xs">Mobile Number Verified</p>
+                        <p className="text-[11px] text-emerald-800 font-semibold">+91 {msgPhone.replace(/\D/g, '').slice(-10)}</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-emerald-600 text-white font-bold px-2.5 py-0.5 rounded-full shadow-xs">
+                      Step 2 of 2
+                    </span>
+                  </div>
+
+                  <div className="text-center pb-1">
+                    <h3 className="font-black text-slate-900 text-base">Complete Customer Details</h3>
+                    <p className="text-[11px] text-slate-500">
+                      Please enter your name, age, email and delivery address for order fulfillment & invoicing.
+                    </p>
+                  </div>
+
+                  {/* Personal Information Card */}
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                    <p className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Personal Information</span>
+                    </p>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Full Name *</label>
+                      <div className="relative">
+                        <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                         <input
                           type="text"
                           required
                           value={name}
                           onChange={e => setName(e.target.value)}
                           placeholder="e.g. Manendra Singh"
-                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs"
+                          className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 shadow-xs"
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">City *</label>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Email Address *</label>
+                      <div className="relative">
+                        <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                        <input
+                          type="email"
+                          required
+                          value={email}
+                          onChange={e => setEmail(e.target.value)}
+                          placeholder="e.g. manendra@example.com"
+                          className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">Age</label>
+                        <div className="relative">
+                          <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                           <input
-                            type="text"
-                            required
-                            value={city}
-                            onChange={e => setCity(e.target.value)}
-                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">PIN Code *</label>
-                          <input
-                            type="text"
-                            required
-                            maxLength={6}
-                            value={postalCode}
-                            onChange={e => setPostalCode(e.target.value.replace(/\D/g, ''))}
-                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs"
+                            type="number"
+                            min={1}
+                            max={120}
+                            value={age}
+                            onChange={e => setAge(e.target.value)}
+                            placeholder="e.g. 26"
+                            className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 shadow-xs"
                           />
                         </div>
                       </div>
-                    </div>
-                  )}
 
-                  {/* Verify Action Button */}
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">Gender</label>
+                        <select
+                          value={gender}
+                          onChange={e => setGender(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                        >
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                          <option value="Other">Other</option>
+                          <option value="Prefer not to say">Prefer not to say</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Delivery Address Card */}
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                    <p className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Delivery Address (Meerut & UP Fulfillment)</span>
+                    </p>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Flat / House No. / Street Address *</label>
+                      <input
+                        type="text"
+                        required
+                        value={street}
+                        onChange={e => setStreet(e.target.value)}
+                        placeholder="e.g. House #42, Blossom Residency, Civil Lines"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Landmark (Optional)</label>
+                      <input
+                        type="text"
+                        value={landmark}
+                        onChange={e => setLandmark(e.target.value)}
+                        placeholder="e.g. Near Circuit House / Clock Tower"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">City *</label>
+                        <input
+                          type="text"
+                          required
+                          value={city}
+                          onChange={e => setCity(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">State *</label>
+                        <input
+                          type="text"
+                          required
+                          value={state}
+                          onChange={e => setState(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">PIN Code *</label>
+                        <input
+                          type="text"
+                          required
+                          maxLength={6}
+                          value={postalCode}
+                          onChange={e => setPostalCode(e.target.value.replace(/\D/g, ''))}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Save Details Button */}
                   <button
-                    type="button"
-                    disabled={isVerifyingOtp || otpDigits.join('').length < 6}
-                    onClick={() => triggerVerifyOtp()}
+                    type="submit"
+                    disabled={isSavingProfile}
                     className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-600/25 disabled:opacity-50"
                   >
-                    {isVerifyingOtp ? (
-                      <span>Verifying code with database...</span>
+                    {isSavingProfile ? (
+                      <span>Saving details in MongoDB database...</span>
                     ) : (
                       <>
                         <Check className="w-4 h-4" />
-                        <span>Verify OTP & {activeTab === 'signup' ? 'Complete Registration' : 'Sign In'}</span>
-                        <ArrowRight className="w-4 h-4 ml-1" />
+                        <span>Save Customer Details & Enter Store</span>
+                        <Sparkles className="w-4 h-4 text-emerald-200" />
                       </>
                     )}
                   </button>
-                </div>
+
+                  <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Customer details saved directly in MongoDB Atlas database</span>
+                  </div>
+                </form>
+              ) : (
+                /* STEP 1: PHONE NUMBER & OTP CODE DISPATCH */
+                <>
+                  {/* Channel Selector: SMS vs WhatsApp */}
+                  <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-xs">
+                          📱
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-900 text-xs sm:text-sm">Real Mobile Phone OTP</p>
+                          <p className="text-[11px] text-slate-500">Live 6-digit verification code delivered directly to your Indian mobile</p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded-full">
+                        Direct Cellular Dispatch
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setMsgChannel('sms')}
+                        className={`p-2.5 rounded-xl border text-left flex items-center gap-2.5 transition ${
+                          msgChannel === 'sms'
+                            ? 'border-blue-600 bg-white ring-2 ring-blue-500/20 shadow-xs'
+                            : 'border-slate-200 bg-white/70 hover:bg-white'
+                        }`}
+                      >
+                        <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm shrink-0">
+                          💬
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900 text-xs">SMS Text Message</p>
+                          <p className="text-[10px] text-blue-700 font-semibold truncate">Direct Cellular SMS</p>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setMsgChannel('whatsapp')}
+                        className={`p-2.5 rounded-xl border text-left flex items-center gap-2.5 transition ${
+                          msgChannel === 'whatsapp'
+                            ? 'border-emerald-600 bg-white ring-2 ring-emerald-500/20 shadow-xs'
+                            : 'border-emerald-100 bg-white/70 hover:bg-white'
+                        }`}
+                      >
+                        <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0">
+                          🟢
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900 text-xs">WhatsApp Message</p>
+                          <p className="text-[10px] text-emerald-700 font-semibold truncate">Official Business Alert</p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Mobile Phone Number Input */}
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                      Enter Your 10-Digit Mobile Number
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="flex items-center gap-1.5 px-3 py-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-700 text-xs shadow-xs">
+                        <span>🇮🇳</span>
+                        <span>+91</span>
+                      </div>
+                      <input
+                        type="tel"
+                        maxLength={10}
+                        value={msgPhone}
+                        onChange={e => setMsgPhone(e.target.value.replace(/\D/g, ''))}
+                        placeholder="Enter your 10-digit number"
+                        className="flex-1 px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 shadow-xs tracking-wider"
+                      />
+                      <button
+                        type="button"
+                        disabled={isSendingOtp || msgPhone.length < 10}
+                        onClick={handleSendOtp}
+                        className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-sm shrink-0"
+                      >
+                        {isSendingOtp ? (
+                          <span>Sending...</span>
+                        ) : isOtpSent ? (
+                          <>
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Resend</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Send Code</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Verification code will be dispatched to your phone via {msgChannel === 'whatsapp' ? 'WhatsApp' : 'cellular SMS'}.
+                    </p>
+                  </div>
+
+                  {/* Real Dispatch Notification Status */}
+                  {isOtpSent && dispatchStatusMsg && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                      <span className="font-medium">{dispatchStatusMsg}</span>
+                    </div>
+                  )}
+
+                  {/* Gateway Configuration Notice if waiting for keys */}
+                  {gatewayNotice && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Live SMS Gateway Setup</span>
+                      </div>
+                      <p className="text-[11px] text-amber-800">
+                        {gatewayNotice}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 6-Digit OTP Input & Verification */}
+                  {isOtpSent && (
+                    <div className="bg-white p-4 rounded-2xl border-2 border-emerald-500/40 space-y-4 shadow-sm animate-in fade-in">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                          <KeyRound className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Enter 6-Digit Code Received on Mobile</span>
+                        </span>
+                        {resendCountdown > 0 ? (
+                          <span className="text-[11px] text-slate-400 font-medium">
+                            Resend in {resendCountdown}s
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleSendOtp}
+                            className="text-[11px] text-emerald-700 font-bold hover:underline"
+                          >
+                            Resend code now
+                          </button>
+                        )}
+                      </div>
+
+                      {/* 6 Digit Input Boxes */}
+                      <div className="flex justify-between gap-1.5 sm:gap-2">
+                        {otpDigits.map((digit, index) => (
+                          <input
+                            key={index}
+                            ref={el => { otpInputRefs.current[index] = el; }}
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={1}
+                            value={digit}
+                            onChange={e => handleOtpDigitChange(index, e.target.value)}
+                            onKeyDown={e => handleOtpKeyDown(index, e)}
+                            onPaste={handlePasteOtp}
+                            className="w-10 sm:w-12 h-12 text-center text-lg font-black bg-slate-50 border-2 border-slate-300 rounded-xl focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 text-slate-900 transition"
+                          />
+                        ))}
+                      </div>
+
+                      {/* Verify Action Button */}
+                      <button
+                        type="button"
+                        disabled={isVerifyingOtp || otpDigits.join('').length < 6}
+                        onClick={() => triggerVerifyOtp()}
+                        className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-600/25 disabled:opacity-50"
+                      >
+                        {isVerifyingOtp ? (
+                          <span>Verifying code with database...</span>
+                        ) : (
+                          <>
+                            <Check className="w-4 h-4" />
+                            <span>Verify Code & Continue</span>
+                            <ArrowRight className="w-4 h-4 ml-1" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
 
             </div>

@@ -422,7 +422,7 @@ export const sendOtp = async (req, res) => {
 };
 export const verifyOtp = async (req, res) => {
     try {
-        const { phone, otp, name, address } = req.body;
+        const { phone, otp, name, email, age, gender, address } = req.body;
         if (!phone || !otp) {
             res.status(400).json({ success: false, message: 'Phone and OTP code are required' });
             return;
@@ -447,42 +447,105 @@ export const verifyOtp = async (req, res) => {
             $or: [
                 { phone: `+91 ${cleanPhone}` },
                 { phone: cleanPhone },
-                { email: `${cleanPhone}@phone.grenterprises.in` }
+                { email: `${cleanPhone}@phone.grenterprises.in` },
+                ...(email && email.trim() ? [{ email: email.trim().toLowerCase() }] : [])
             ]
         });
+        const userEmail = (email && email.trim() && email.includes('@'))
+            ? email.trim().toLowerCase()
+            : (user ? user.email : `${cleanPhone}@phone.grenterprises.in`);
         if (!user) {
             const userId = `usr-p-${Date.now()}`;
             const userName = name?.trim() || `Customer +91 ${cleanPhone}`;
             user = await UserModel.create({
                 id: userId,
                 name: userName,
-                email: `${cleanPhone}@phone.grenterprises.in`,
+                email: userEmail,
                 phone: `+91 ${cleanPhone}`,
+                age: age !== undefined && age !== '' ? Number(age) : undefined,
+                gender: gender || undefined,
                 role: 'd2c_customer',
                 authProvider: 'phone',
-                savedAddresses: address ? [address] : [],
+                savedAddresses: address && address.street ? [address] : [],
             });
-            console.log(`✅ [MongoDB Atlas] Created new Mobile OTP user: ${user.name} (+91 ${cleanPhone})`);
+            console.log(`✅ [MongoDB Atlas] Created new Mobile OTP user: ${user.name} (+91 ${cleanPhone}, Age: ${user.age})`);
         }
         else {
-            if (name && (!user.name || user.name.startsWith('Customer +91'))) {
+            if (name && name.trim()) {
                 user.name = name.trim();
             }
-            if (address && (!user.savedAddresses || user.savedAddresses.length === 0)) {
+            if (email && email.trim() && email.includes('@')) {
+                user.email = email.trim().toLowerCase();
+            }
+            if (age !== undefined && age !== '') {
+                user.age = Number(age);
+            }
+            if (gender) {
+                user.gender = gender;
+            }
+            if (address && address.street) {
                 user.savedAddresses = [address];
             }
             await user.save();
-            console.log(`✅ [MongoDB Atlas] Existing Mobile OTP user logged in: ${user.name} (+91 ${cleanPhone})`);
+            console.log(`✅ [MongoDB Atlas] Existing Mobile OTP user logged in & updated: ${user.name} (+91 ${cleanPhone})`);
         }
         const token = generateToken(user.id, user.role);
         res.json({
             success: true,
-            message: 'Mobile number verified successfully! Logged in and saved in MongoDB Atlas.',
+            message: 'Mobile number verified successfully! Customer saved in MongoDB Atlas.',
+            data: user,
+            token,
+            isNewUser: !name || user.name.startsWith('Customer +91') || user.email.includes('@phone.grenterprises.in'),
+        });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+export const updateProfile = async (req, res) => {
+    try {
+        const { userId, name, email, age, gender, address, phone } = req.body;
+        if (!userId) {
+            res.status(400).json({ success: false, message: 'User ID is required' });
+            return;
+        }
+        const user = await UserModel.findOne({ id: userId });
+        if (!user) {
+            res.status(404).json({ success: false, message: 'User not found in MongoDB database' });
+            return;
+        }
+        if (name && name.trim())
+            user.name = name.trim();
+        if (email && email.trim() && email.includes('@'))
+            user.email = email.trim().toLowerCase();
+        if (age !== undefined && age !== '')
+            user.age = Number(age);
+        if (gender)
+            user.gender = gender;
+        if (phone)
+            user.phone = phone;
+        if (address && address.street) {
+            const deliveryAddress = {
+                street: address.street.trim(),
+                landmark: address.landmark?.trim() || undefined,
+                city: address.city?.trim() || 'Meerut',
+                state: address.state?.trim() || 'Uttar Pradesh',
+                postalCode: address.postalCode?.trim() || '250001',
+                country: address.country?.trim() || 'India',
+            };
+            user.savedAddresses = [deliveryAddress];
+        }
+        await user.save();
+        console.log(`✅ [MongoDB Atlas] Customer details updated: ${user.name} (${user.email}, Age: ${user.age})`);
+        const token = generateToken(user.id, user.role);
+        res.json({
+            success: true,
+            message: 'Customer profile details updated successfully in MongoDB Atlas',
             data: user,
             token,
         });
     }
     catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        res.status(400).json({ success: false, message: error.message });
     }
 };

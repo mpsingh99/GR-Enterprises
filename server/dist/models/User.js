@@ -52,6 +52,8 @@ const UserSchema = new Schema({
         default: 'd2c_customer',
     },
     avatar: { type: String },
+    age: { type: Number },
+    gender: { type: String },
     businessProfile: { type: B2BProfileSchema },
     savedAddresses: [AddressSchema],
     joinedDate: { type: String, default: () => new Date().toISOString().split('T')[0] },

@@ -40,7 +40,8 @@ import {
   apiUpdateOrderStatus,
   apiLogin,
   apiSendOtp,
-  apiVerifyOtp
+  apiVerifyOtp,
+  apiUpdateProfile
 } from '../services/api';
 
 export interface ToastMessage {
@@ -156,7 +157,24 @@ interface AppContextType {
     dispatched?: boolean;
     gatewayNotice?: string;
   }>;
-  loginWithPhoneOtp: (phone: string, otp: string, name?: string, address?: Address) => Promise<User | null>;
+  loginWithPhoneOtp: (
+    phone: string,
+    otp: string,
+    name?: string,
+    email?: string,
+    age?: number,
+    gender?: string,
+    address?: Address
+  ) => Promise<User | null>;
+  updateCustomerProfile: (profileData: {
+    userId: string;
+    name: string;
+    email: string;
+    age?: number;
+    gender?: string;
+    address: Address;
+    phone?: string;
+  }) => Promise<User | null>;
 
   // Experience Gateway (Initial Visit Chooser)
   isExperienceGateOpen: boolean;
@@ -622,6 +640,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     phone: string,
     otp: string,
     name?: string,
+    email?: string,
+    age?: number,
+    gender?: string,
     address?: Address
   ): Promise<User | null> => {
     const cleanPhone = phone.replace(/\D/g, '').slice(-10);
@@ -632,6 +653,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         phone: cleanPhone,
         otp,
         name,
+        email,
+        age,
+        gender,
         address
       });
 
@@ -670,6 +694,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return backendUser;
     } catch (err: any) {
       showToast('Verification Error', err.message || 'OTP verification failed.', 'error');
+      return null;
+    }
+  };
+
+  const updateCustomerProfile = async (profileData: {
+    userId: string;
+    name: string;
+    email: string;
+    age?: number;
+    gender?: string;
+    address: Address;
+    phone?: string;
+  }): Promise<User | null> => {
+    try {
+      const updatedUser = await apiUpdateProfile(profileData);
+      if (updatedUser) {
+        setCurrentUser(updatedUser);
+        setUsers(prev => [updatedUser, ...prev.filter(u => u.id !== updatedUser.id)]);
+        showToast('Profile Details Saved', `Welcome, ${updatedUser.name}! Your details and delivery address are saved in MongoDB Atlas.`, 'success');
+        return updatedUser;
+      }
+      return null;
+    } catch (err: any) {
+      showToast('Update Failed', err.message || 'Could not save profile details.', 'error');
       return null;
     }
   };
@@ -1080,6 +1128,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         loginUser,
         sendPhoneOtp,
         loginWithPhoneOtp,
+        updateCustomerProfile,
         isGoogleAuthModalOpen,
         setIsGoogleAuthModalOpen,
         isExperienceGateOpen,

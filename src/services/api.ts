@@ -152,9 +152,27 @@ export const apiVerifyOtp = async (data: {
   phone: string;
   otp: string;
   name?: string;
+  email?: string;
+  age?: number;
+  gender?: string;
   address?: any;
 }): Promise<User | null> => {
   return request<User>('/auth/verify-otp', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+};
+
+export const apiUpdateProfile = async (data: {
+  userId: string;
+  name: string;
+  email: string;
+  age?: number;
+  gender?: string;
+  address: any;
+  phone?: string;
+}): Promise<User | null> => {
+  return request<User>('/auth/update-profile', {
     method: 'POST',
     body: JSON.stringify(data),
   });

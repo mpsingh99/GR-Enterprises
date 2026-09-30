@@ -46,6 +46,8 @@ export interface IUser extends Document {
   phone?: string;
   role: 'guest' | 'd2c_customer' | 'b2b_pending' | 'b2b_needs_info' | 'b2b_approved' | 'admin';
   avatar?: string;
+  age?: number;
+  gender?: string;
   businessProfile?: IB2BApplicationDetails;
   savedAddresses?: IAddress[];
   joinedDate?: string;
@@ -114,6 +116,8 @@ const UserSchema = new Schema<IUser>(
       default: 'd2c_customer',
     },
     avatar: { type: String },
+    age: { type: Number },
+    gender: { type: String },
     businessProfile: { type: B2BProfileSchema },
     savedAddresses: [AddressSchema],
     joinedDate: { type: String, default: () => new Date().toISOString().split('T')[0] },
