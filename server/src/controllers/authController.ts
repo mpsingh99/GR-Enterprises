@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { UserModel } from '../models/User.js';
+import { OtpModel } from '../models/Otp.js';
 import jwt from 'jsonwebtoken';
 import { sendFast2SmsOtp, sanitizeIndianMobile, isValidIndianMobile } from '../services/smsService.js';
 
@@ -450,9 +451,23 @@ export const sendOtp = async (req: Request, res: Response): Promise<void> => {
 
     // Generate real 6-digit secure OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes validity
+    const expiresAtMs = Date.now() + 10 * 60 * 1000; // 10 minutes validity
+    const expiresAtDate = new Date(expiresAtMs);
 
-    otpStore.set(cleanPhone, { otp, expiresAt, channel });
+    // Save in memory cache
+    otpStore.set(cleanPhone, { otp, expiresAt: expiresAtMs, channel });
+
+    // Persist in MongoDB Atlas for cross-instance verification (Vercel serverless lambdas)
+    try {
+      await OtpModel.findOneAndUpdate(
+        { phone: cleanPhone },
+        { otp, channel, expiresAt: expiresAtDate },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      console.log(`✅ [MongoDB Atlas] OTP persisted for +91 ${cleanPhone}`);
+    } catch (dbErr: any) {
+      console.warn('⚠️ [MongoDB Atlas OTP Persistence Notice]', dbErr.message);
+    }
 
     // Attempt real gateway dispatch (Fast2SMS for SMS, Twilio for WhatsApp)
     const result = await dispatchRealOtp(cleanPhone, otp, channel);
@@ -495,19 +510,41 @@ export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const record = otpStore.get(cleanPhone);
+    const inputCode = otp.trim();
+    let isValid = false;
 
-    // Strict real validation: code must match stored OTP and not be expired
-    const isValid = record && record.otp === otp.trim() && record.expiresAt > Date.now();
+    // 1. Primary check: MongoDB Atlas (shared across all Vercel serverless lambdas)
+    try {
+      const dbRecord = await OtpModel.findOne({ phone: cleanPhone });
+      if (dbRecord && dbRecord.otp === inputCode) {
+        if (new Date(dbRecord.expiresAt).getTime() > Date.now()) {
+          isValid = true;
+        }
+      }
+    } catch (dbErr: any) {
+      console.warn('⚠️ [MongoDB Atlas OTP Check Notice]', dbErr.message);
+    }
+
+    // 2. Secondary fallback: in-memory cache
+    if (!isValid) {
+      const record = otpStore.get(cleanPhone);
+      if (record && record.otp === inputCode && record.expiresAt > Date.now()) {
+        isValid = true;
+      }
+    }
 
     if (!isValid) {
       res.status(400).json({
         success: false,
-        message: 'Invalid or expired OTP code. Please enter the correct 6-digit code received on your phone or request a new one.'
+        message: 'Invalid or expired OTP code. Please enter the correct 6-digit code received on your mobile or request a new one.'
       });
       return;
     }
 
+    // Clean up used OTP
+    try {
+      await OtpModel.deleteOne({ phone: cleanPhone });
+    } catch (_) {}
     otpStore.delete(cleanPhone);
 
     let user = await UserModel.findOne({
@@ -559,12 +596,20 @@ export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
     }
 
     const token = generateToken(user.id, user.role);
+    const hasCompleteDetails = 
+      Boolean(user.name) && 
+      !user.name.startsWith('Customer +91') && 
+      Boolean(user.email) && 
+      !user.email.includes('@phone.grenterprises.in') && 
+      Boolean(user.age) && 
+      Boolean(user.savedAddresses && user.savedAddresses.length > 0 && user.savedAddresses[0]?.street);
+
     res.json({
       success: true,
       message: 'Mobile number verified successfully! Customer saved in MongoDB Atlas.',
       data: user,
       token,
-      isNewUser: !name || user.name.startsWith('Customer +91') || user.email.includes('@phone.grenterprises.in'),
+      isNewUser: !hasCompleteDetails,
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -587,10 +632,50 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
     }
 
     if (name && name.trim()) user.name = name.trim();
-    if (email && email.trim() && email.includes('@')) user.email = email.trim().toLowerCase();
     if (age !== undefined && age !== '') user.age = Number(age);
     if (gender) user.gender = gender;
     if (phone) user.phone = phone;
+
+    if (email && email.trim() && email.includes('@')) {
+      const cleanEmail = email.trim().toLowerCase();
+      // Check if another account in MongoDB Atlas already has this email
+      const existingUserWithEmail = await UserModel.findOne({ email: cleanEmail });
+      if (existingUserWithEmail && existingUserWithEmail.id !== user.id) {
+        // Link and merge this mobile profile into the existing account
+        if (phone || user.phone) existingUserWithEmail.phone = phone || user.phone;
+        if (name && name.trim()) existingUserWithEmail.name = name.trim();
+        if (age !== undefined && age !== '') existingUserWithEmail.age = Number(age);
+        if (gender) existingUserWithEmail.gender = gender;
+        if (address && address.street) {
+          const deliveryAddress = {
+            street: address.street.trim(),
+            landmark: address.landmark?.trim() || undefined,
+            city: address.city?.trim() || 'Meerut',
+            state: address.state?.trim() || 'Uttar Pradesh',
+            postalCode: address.postalCode?.trim() || '250001',
+            country: address.country?.trim() || 'India',
+          };
+          existingUserWithEmail.savedAddresses = [deliveryAddress];
+        }
+        await existingUserWithEmail.save();
+        console.log(`✅ [MongoDB Atlas] Merged phone ${user.phone} into existing account ${cleanEmail}`);
+
+        // If the temporary phone account was a placeholder, delete the duplicate placeholder
+        if (user.email.includes('@phone.grenterprises.in')) {
+          await UserModel.deleteOne({ id: user.id });
+        }
+
+        const mergedToken = generateToken(existingUserWithEmail.id, existingUserWithEmail.role);
+        res.json({
+          success: true,
+          message: 'Customer details saved and account linked in MongoDB Atlas',
+          data: existingUserWithEmail,
+          token: mergedToken,
+        });
+        return;
+      }
+      user.email = cleanEmail;
+    }
 
     if (address && address.street) {
       const deliveryAddress = {

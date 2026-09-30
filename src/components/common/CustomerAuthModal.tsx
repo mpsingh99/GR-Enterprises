@@ -884,31 +884,33 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                       Enter Your 10-Digit Mobile Number
                     </label>
-                    <div className="flex gap-2">
-                      <div className="flex items-center gap-1.5 px-3 py-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-700 text-xs shadow-xs">
-                        <span>🇮🇳</span>
-                        <span>+91</span>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="flex flex-1 gap-2 min-w-0">
+                        <div className="flex items-center gap-1.5 px-3 py-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-700 text-xs shadow-xs shrink-0">
+                          <span>🇮🇳</span>
+                          <span>+91</span>
+                        </div>
+                        <input
+                          type="tel"
+                          maxLength={10}
+                          value={msgPhone}
+                          onChange={e => setMsgPhone(e.target.value.replace(/\D/g, ''))}
+                          placeholder="Enter 10-digit number"
+                          className="flex-1 min-w-0 px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 shadow-xs tracking-wider"
+                        />
                       </div>
-                      <input
-                        type="tel"
-                        maxLength={10}
-                        value={msgPhone}
-                        onChange={e => setMsgPhone(e.target.value.replace(/\D/g, ''))}
-                        placeholder="Enter your 10-digit number"
-                        className="flex-1 px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 shadow-xs tracking-wider"
-                      />
                       <button
                         type="button"
                         disabled={isSendingOtp || msgPhone.length < 10}
                         onClick={handleSendOtp}
-                        className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-sm shrink-0"
+                        className="w-full sm:w-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-sm shrink-0"
                       >
                         {isSendingOtp ? (
                           <span>Sending...</span>
                         ) : isOtpSent ? (
                           <>
                             <RotateCcw className="w-3.5 h-3.5" />
-                            <span>Resend</span>
+                            <span>Resend Code</span>
                           </>
                         ) : (
                           <>
@@ -968,7 +970,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                       </div>
 
                       {/* 6 Digit Input Boxes */}
-                      <div className="flex justify-between gap-1.5 sm:gap-2">
+                      <div className="flex justify-between gap-1 sm:gap-2">
                         {otpDigits.map((digit, index) => (
                           <input
                             key={index}
@@ -980,7 +982,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                             onChange={e => handleOtpDigitChange(index, e.target.value)}
                             onKeyDown={e => handleOtpKeyDown(index, e)}
                             onPaste={handlePasteOtp}
-                            className="w-10 sm:w-12 h-12 text-center text-lg font-black bg-slate-50 border-2 border-slate-300 rounded-xl focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 text-slate-900 transition"
+                            className="w-9 sm:w-12 h-11 sm:h-12 text-center text-lg font-black bg-slate-50 border-2 border-slate-300 rounded-xl focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 text-slate-900 transition flex-1 max-w-[48px]"
                           />
                         ))}
                       </div>
